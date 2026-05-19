@@ -23,7 +23,11 @@ If this is a fresh machine, see [Bootstrap a new machine](#bootstrap-a-new-machi
 
 - **Windows 10 / 11** (Linux supported by upstream kit-app-template, untested here)
 - **NVIDIA RTX GPU** (RTX 3070 or better recommended; tested on RTX 4080 / 4090)
-- **NVIDIA driver ≥ 551.78** (Windows)
+- **NVIDIA driver ≥ 573.39** (Windows) — **573.39** is the lower bound for
+  Kit SDK 110.1.1; **581.42** (or newer) is the version NVIDIA recommends.
+  Drivers in `[570.00, 573.39)` fail RTX initialization silently (see
+  Troubleshooting). Earlier drivers (`≥ 551.78`) work with older Kit SDKs
+  but not the one this repo currently builds against.
 - **~40 GB free disk** for the Kit SDK cache (`%LOCALAPPDATA%\ov\data\`)
 - **Git** ([download](https://git-scm.com/downloads))
 - **Visual Studio 2019 or 2022** with the *Desktop development with C++*
@@ -177,6 +181,14 @@ sibling and produce the USD, or set `MESSEL_USD` to an explicit path.
 **Black viewport, no terrain.** Wait — first-launch shader compilation
 takes 5–8 minutes with no UI feedback. Watch `kit-app-template\launch.log`
 for progress.
+
+**"RTX loading" hangs for minutes, then app opens with a non-rendering
+viewport.** Your NVIDIA driver is in the unsupported range
+`[570.00, 573.39)`. Kit retries RTX init for ~4 minutes before giving up;
+the app reaches `app ready` but the Hydra RTX engine never initializes, so
+the viewport stays empty. Check stdout for
+`rtx driver verification failed` to confirm. Fix: update to driver
+**581.42** (NVIDIA's recommended) or any `≥ 573.39`.
 
 **`device lost` crash ~30 s after stage open.** You're loading the
 full-res `messel.usd` (~108 M tris). Use `messel_med.usd` instead, or build
