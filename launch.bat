@@ -12,12 +12,20 @@ REM   launch.bat --no-auto
 
 setlocal EnableDelayedExpansion
 
-REM Default to the --decimate 4 build (~6.75M tris) which loads stably on a
-REM 4090. The full-res messel.usd (~108M tris) triggers a GPU device-lost
-REM after ~30s in Kit (it works fine in usdview). Use messel.usd directly via
-REM   set "MESSEL_USD=D:\senckenberg\messelpit\out\messel.usd" && launch.bat
-REM for offline-quality renders if you accept the crash risk.
-if "%MESSEL_USD%"=="" set "MESSEL_USD=D:\senckenberg\messelpit\out\messel_med.usd"
+REM Default: look for messel.usd in the sibling data repo (..\messelpit\out\).
+REM We prefer messel_med.usd (--decimate 4 build, ~6.75M tris) which loads
+REM stably on a 4090; the full-res messel.usd (~108M tris) triggers a GPU
+REM device-lost after ~30s in Kit (it works fine in usdview). To force the
+REM full-res, the decimate=8 lo-poly, or any other USD:
+REM   set "MESSEL_USD=D:\path\to\other.usd" && launch.bat
+if "%MESSEL_USD%"=="" (
+    set "MESSEL_CAND=%~dp0..\messelpit\out\messel_med.usd"
+    if exist "!MESSEL_CAND!" (
+        set "MESSEL_USD=!MESSEL_CAND!"
+    ) else (
+        set "MESSEL_USD=%~dp0..\messelpit\out\messel.usd"
+    )
+)
 
 set "AUTO=1"
 if /i "%~1"=="--no-auto" (
