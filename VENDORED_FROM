@@ -1,0 +1,21 @@
+kit-app-template was cloned from:
+
+  https://github.com/NVIDIA-Omniverse/kit-app-template
+
+at commit:
+
+  f130d19bef6e2592157379547d65163b5398d3bb
+  (kit-106.1.0-ea-62-gf130d19)
+
+on 2026-05-19.
+
+The upstream .git directory was removed when vendoring into this repo, so
+this is now a snapshot rather than a tracked fork. To pick up upstream
+changes, re-clone from upstream into a sibling directory and diff/merge by
+hand. Our customizations live in:
+
+  kit-app-template/source/apps/senckenberg.messelpit.*.kit
+  kit-app-template/source/extensions/senckenberg.messelpit*
+  kit-app-template/.vscode/replay_files/messelpit_*
+
+The rest of kit-app-template/ is unmodified upstream.

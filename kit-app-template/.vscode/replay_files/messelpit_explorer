@@ -1,0 +1,9 @@
+[omni_usd_explorer]
+application_name = "senckenberg.messelpit.explorer"
+application_display_name = "Messel Pit Explorer"
+version = "0.1.0"
+
+[omni_usd_explorer.extensions.omni_usd_explorer_setup]
+extension_name = "senckenberg.messelpit.explorer.setup"
+extension_display_name = "Messel Pit Explorer Setup Extension"
+version = "0.1.0"
