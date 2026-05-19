@@ -1,0 +1,1 @@
+# Messel Pit Viewer Setup Extension [senckenberg.messelpit.viewer.setup]

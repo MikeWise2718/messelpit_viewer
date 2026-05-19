@@ -1,0 +1,1 @@
+# Messel Pit Explorer Setup Extension [senckenberg.messelpit.explorer.setup]

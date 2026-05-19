@@ -1,0 +1,28 @@
+[package]
+title = "Messel Pit"
+version = "0.1.0"
+description = "Domain logic for the Senckenberg Messel Pit viewer: auto-load, viewpoints, info panel. Shared by the desktop (Explorer) and streaming (Viewer) kit apps."
+category = "Other"
+keywords = ["messelpit", "senckenberg", "lidar", "heightfield", "vr"]
+authors = ["Senckenberg Naturmuseum Frankfurt"]
+
+[dependencies]
+"omni.kit.uiapp" = {}
+"omni.usd" = {}
+"omni.ui" = {}
+# omni.kit.viewport.utility is required for the viewpoint camera moves but is
+# already pulled in by both setup extensions; declaring it here is optional —
+# left out to keep our deps minimal and let the host .kit decide. If we ever
+# build a "vanilla Kit" smoke test that doesn't load a setup, add it back.
+
+[[python.module]]
+name = "senckenberg.messelpit"
+
+[settings.app]
+# Path to the messel.usd to auto-open on startup. Override at launch via:
+#   --/app/messelpit/load_usd=D:\path\to\messel.usd
+# If empty (default), no auto-load; the app opens an empty stage.
+messelpit.load_usd = ""
+
+# Whether the docked controls panel is visible by default.
+messelpit.ui.show_panel = true

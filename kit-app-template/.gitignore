@@ -37,4 +37,8 @@ deps/**/user.toml
 # Streaming EventTrace
 *.etli
 
-/source
+# Note: upstream kit-app-template ignores /source because that tree is
+# generated from the .vscode/replay_files/* scaffolds. In this vendored
+# fork the senckenberg.messelpit.* apps + extensions live under source/
+# and contain manual edits, so they ARE tracked here.
+# (was: /source)
