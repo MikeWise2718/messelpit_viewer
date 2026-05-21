@@ -27,6 +27,8 @@ template_name = "omni.streaming_configuration"
 [dependencies]
 "senckenberg.messelpit.viewer" = {}  # Application kit file
 "omni.kit.livestream.app" = {}  # Livestream extension
+"omni.light_rigs" = {}  # Provides "Sunny Sky" and other light rig presets
+"omni.kit.viewport.menubar.lighting" = {}  # Auto-applies a default light rig on stage open
 
 [settings.app]
 fastShutdown = true
@@ -58,6 +60,19 @@ folders.'++' = [  # Search paths for extensions.
 
 [settings.app.file]
 ignoreUnsavedOnExit = true
+
+# Auto-apply a Sunny Sky light rig when a stage opens without lights.
+# Same wiring as the Explorer kit -- the base Viewer kit doesn't include this
+# (it's intentionally minimal), so we add it in the streaming layer to make
+# unlit USDs (like messel_med.usd) render visibly. The menubar dep brings in
+# the auto-rig logic; the rigs dep provides the actual light-rig presets.
+[settings.exts."omni.kit.viewport.menubar.lighting"]
+autoLightRig.enableWithoutMenu = true
+defaultRig = "Sunny Sky"
+rigs = "${omni.light_rigs}/light_rig_data/light_rigs"
+
+[settings.persistent.exts."omni.kit.viewport.menubar.lighting"]
+autoLightRig.enabled = true
 
 
 ########################################################################################################################

@@ -43,7 +43,7 @@ if /i "%~1"=="--no-auto" (
 pushd "%~dp0kit-app-template"
 if "!AUTO!"=="1" (
     echo [launch_stream.bat] auto-loading: !MESSEL_USD!
-    echo [launch_stream.bat] start web-viewer-sample (npm run dev) then open http://localhost:5173
+    echo [launch_stream.bat] start web-viewer-sample with 'npm run dev' then open http://localhost:5173
     call .\repo.bat launch --name senckenberg.messelpit.viewer_streaming.kit -- --no-window "--/app/messelpit/load_usd=!MESSEL_USD!" %*
 ) else (
     echo [launch_stream.bat] auto-load disabled
