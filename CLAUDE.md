@@ -153,6 +153,20 @@ The data repo (`MikeWise2718/messelpit`) is loose-coupled:
 - The texture (`ortho.png`) lives next to the USD; the USD references it
   by relative path. Both must be co-located on disk.
 
+The browser streaming client (`NVIDIA-Omniverse/web-viewer-sample`) is also
+loose-coupled, used only by the `streaming-experiment` branch:
+
+- Cloned as a sibling: `D:\senckenberg\web-viewer-sample\`.
+- `npm install` once, then `npm run dev` per session (Vite dev server on
+  `http://localhost:5173`).
+- `stream.config.json` defaults to `source: "local"`, server `127.0.0.1`,
+  signaling port `49100` — which matches what Kit's `omni.kit.livestream.app`
+  serves. No edits needed for desktop loopback testing.
+- For Quest browser testing: change `server` to this PC's LAN IP and visit
+  the dev server from the headset.
+- `package.json` declares `node: ^18.0.0`; works fine on Node 24 with an
+  EBADENGINE warning that can be ignored.
+
 ## Data-pipeline gotchas the viewer cares about
 
 These are documented at length in the data repo, but they matter here too:
