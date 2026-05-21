@@ -10,18 +10,29 @@ from __future__ import annotations
 from typing import Callable
 
 import carb
+import carb.settings
 import omni.ui as ui
 
+_LOOK_SPEED_Y_PATH = "/persistent/exts/omni.kit.manipulator.camera/lookSpeed/1"
+
 from .controls import MesselControls
+from .fps_camera import FpsCameraController
 
 WINDOW_TITLE = "Messel Pit Controls"
 DOCK_TARGET = "Stage"  # Dock next to the Stage hierarchy panel by default.
 
 
 class MesselDesktopUI:
-    def __init__(self, controls: MesselControls) -> None:
+    def __init__(self, controls: MesselControls,
+                 fps: FpsCameraController | None = None) -> None:
         self._controls = controls
+        self._fps = fps
         self._window: ui.Window | None = None
+        self._fps_status_label: ui.Label | None = None
+        self._invert_y_label: ui.Label | None = None
+
+        if self._fps is not None:
+            self._fps.add_state_listener(self._on_fps_state_change)
 
     def show(self) -> None:
         if self._window is not None:
@@ -54,6 +65,7 @@ class MesselDesktopUI:
         # _widgets.TabGroup also does internally.
         tabs: list[tuple[str, Callable[[], None]]] = [
             ("Viewpoints", self._build_viewpoints_tab),
+            ("Controls", self._build_controls_tab),
             ("Info", self._build_info_tab),
         ]
         self._tab_frames: list[ui.Frame] = []
@@ -94,6 +106,71 @@ class MesselDesktopUI:
                         word_wrap=True,
                     )
 
+    def _build_controls_tab(self) -> None:
+        with ui.VStack(spacing=6):
+            ui.Label("First-Person Camera", style={"color": 0xFFAAAAAA})
+            self._fps_status_label = ui.Label(
+                "FPS Mode: OFF",
+                style={"color": 0xFF888888, "font_size": 13},
+            )
+            ui.Button(
+                "Toggle FPS Mode  [Tab]",
+                height=32,
+                clicked_fn=self._on_fps_button,
+                tooltip="Enter locked first-person camera mode",
+            )
+            ui.Separator()
+            ui.Label(
+                "Keys while in FPS mode:",
+                style={"color": 0xFF888888, "font_size": 12},
+            )
+            for line in [
+                "W / S   —  forward / backward",
+                "A / D   —  strafe left / right",
+                "Q / E   —  down / up",
+                "Mouse   —  look around",
+                "Tab / Esc  —  exit FPS mode",
+            ]:
+                ui.Label(line, style={"font_size": 11, "color": 0xFF777777})
+
+            ui.Separator()
+            ui.Label("Mouse", style={"color": 0xFFAAAAAA})
+            self._invert_y_label = ui.Label(
+                self._invert_y_label_text(),
+                style={"color": 0xFF888888, "font_size": 13},
+            )
+            ui.Button(
+                "Toggle Invert Y",
+                height=32,
+                clicked_fn=self._on_toggle_invert_y,
+                tooltip="Invert mouse look up/down for fly mode and FPS mode",
+            )
+
+    def _invert_y_label_text(self) -> str:
+        val = carb.settings.get_settings().get(_LOOK_SPEED_Y_PATH) or 90.0
+        on = val < 0
+        return f"Invert Y: {'ON' if on else 'OFF'}"
+
+    def _on_toggle_invert_y(self) -> None:
+        s = carb.settings.get_settings()
+        current = s.get(_LOOK_SPEED_Y_PATH) or 90.0
+        s.set(_LOOK_SPEED_Y_PATH, -current)
+        if self._invert_y_label is not None:
+            self._invert_y_label.text = self._invert_y_label_text()
+
+    def _on_fps_button(self) -> None:
+        if self._fps is not None:
+            self._fps.toggle()
+
+    def _on_fps_state_change(self, active: bool) -> None:
+        if self._fps_status_label is not None:
+            self._fps_status_label.text = (
+                "FPS Mode: ON  (Esc to exit)" if active else "FPS Mode: OFF"
+            )
+            self._fps_status_label.set_style(
+                {"color": 0xFF44DD44 if active else 0xFF888888, "font_size": 13}
+            )
+
     def _build_info_tab(self) -> None:
         with ui.VStack(spacing=4):
             ui.Label("About this scene", style={"color": 0xFFAAAAAA})
@@ -128,3 +205,5 @@ class MesselDesktopUI:
             self._window.destroy()
             self._window = None
         self._tab_frames = []
+        self._fps_status_label = None
+        self._invert_y_label = None

@@ -23,6 +23,7 @@ import omni.kit.app
 import omni.usd
 
 from .controls import MesselControls
+from .fps_camera import FpsCameraController
 from .ui_desktop import MesselDesktopUI
 from .ui_vr import MesselVrUI
 
@@ -64,23 +65,37 @@ class MesselpitExtension(omni.ext.IExt):
         if usd_path:
             asyncio.ensure_future(_auto_open_stage(usd_path))
 
+        # Invert Y axis for mouse look (fly mode and FPS mode).
+        # Setting lookSpeed/1 negative flips the vertical direction.
+        self._settings.set(
+            "/persistent/exts/omni.kit.manipulator.camera/lookSpeed/1", -90.0
+        )
+
         self._controls = MesselControls()
+
+        try:
+            self._fps = FpsCameraController()
+        except Exception as exc:
+            carb.log_warn(f"[messelpit] FPS controller failed to init: {exc}")
+            self._fps = None
 
         if _is_streaming_active():
             carb.log_info("[messelpit] livestream detected → VR UI")
             self._ui = MesselVrUI(self._controls)
         else:
             carb.log_info("[messelpit] desktop UI")
-            self._ui = MesselDesktopUI(self._controls)
+            self._ui = MesselDesktopUI(self._controls, self._fps)
 
-        if self._settings.get_as_bool(SETTING_SHOW_PANEL):
-            self._ui.show()
+        self._ui.show()
 
     def on_shutdown(self) -> None:
         carb.log_info(f"[messelpit] shutdown ({self._ext_id})")
         if self._ui is not None:
             self._ui.destroy()
             self._ui = None
+        if self._fps is not None:
+            self._fps.destroy()
+            self._fps = None
         if self._controls is not None:
             self._controls.destroy()
             self._controls = None

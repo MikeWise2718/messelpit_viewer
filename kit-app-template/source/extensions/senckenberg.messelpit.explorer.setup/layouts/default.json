@@ -111,6 +111,18 @@
                 "title": "Stage",
                 "visible": true,
                 "width": 464.0
+              },
+              {
+                "dock_id": 7,
+                "dock_tab_bar_enabled": true,
+                "dock_tab_bar_visible": true,
+                "height": 477.0,
+                "position_x": 1456.0,
+                "position_y": 26.0,
+                "selected_in_dock": false,
+                "title": "Messel Pit Controls",
+                "visible": true,
+                "width": 464.0
               }
             ],
             "dock_id": 7,
