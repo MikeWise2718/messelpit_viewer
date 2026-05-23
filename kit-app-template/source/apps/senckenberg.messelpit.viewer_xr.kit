@@ -56,6 +56,20 @@ name = "Messel Pit VR"
 [settings.app.window]
 title = "Messel Pit VR"
 
+# Extend the runtime search path so the staged .kit files in
+# _build/.../apps/ are discoverable as pseudo-extensions. Without this,
+# the dependency on senckenberg.messelpit.explorer fails to resolve:
+# Kit only looks in the user-local cache + kit/apps/, and our staged
+# .kit files in _build/.../apps/ are invisible. Same pattern as
+# viewer_streaming.kit -- without it, depending on viewer.kit by name
+# would also fail.
+[settings.app.exts]
+folders.'++' = [
+    "${app}/../exts",
+    "${app}/../apps",
+    "${app}/../extscache"
+]
+
 # XR session settings -- to be tuned after first smoke test. Defaults
 # kept here as commented hints so we know what knobs exist:
 # [settings.xr]
