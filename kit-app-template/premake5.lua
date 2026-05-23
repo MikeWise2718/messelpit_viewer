@@ -19,3 +19,4 @@ repo_build.prebuild_copy {
 define_app("senckenberg.messelpit.viewer.kit")
 define_app("senckenberg.messelpit.explorer.kit")
 define_app("senckenberg.messelpit.viewer_streaming.kit")
+define_app("senckenberg.messelpit.viewer_xr.kit")
