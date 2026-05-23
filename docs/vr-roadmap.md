@@ -259,20 +259,93 @@ flag on `viewer_streaming.kit`:
 This is actually clean — it means the streaming work we did isn't
 wasted, and the VR work won't break it.
 
-### Concrete next step: registry probe
+### Registry probe result (2026-05-21)
 
-Create a throwaway `.kit` that depends on `omni.kit.xr.bundle.generic`
-and `omni.kit.xr.system.openxr`, run `repo.bat build`, observe:
+Probed via a throwaway `senckenberg.xr_probe.kit` declaring
+`omni.kit.xr.bundle.generic` + `omni.kit.xr.system.openxr` as deps.
+Findings:
 
-1. **Does packman fetch from the public registry?** If yes (no 401),
-   we have access. If no, we need NVIDIA Enterprise registry credentials
-   and the whole XR path may be gated behind a license.
-2. **What is `bundle.generic`'s `extension.toml`?** Look for runtime
-   linkage: SteamVR? Monado? Native OpenXR? CloudXR Server?
-3. **What other extensions get pulled in transitively?** If something
-   called `cloudxr-server` or `nvidia-cloudxr-runtime` shows up, that's
-   the answer.
+**1. Registry availability: GREEN.** All XR extensions pulled
+successfully from the public `kit/sdk` registry — no auth, no
+401s. Available at **version 109.0.0** (one major behind our 110.1.1
+SDK; resolver picked them anyway). What landed in extscache:
 
-Time budget: ~10 minutes if registry pull works, then ~5 minutes of
-file inspection. After that we can update this doc with a definitive
-B-vs-C verdict.
+- `omni.kit.xr.bundle.generic-109.0.0`
+- `omni.kit.xr.core-109.0.0`
+- `omni.kit.xr.system.openxr-109.0.0`
+- `omni.kit.xr.system.simulatedxr-109.0.0`
+- `omni.kit.xr.ui.stage-109.0.0`
+- `omni.kit.xr.ui.window.profile-109.0.0`
+- `omni.kit.xr.ui.window.viewport-109.0.0`
+- `omni.kit.scene_view.xr-1.0.4`
+- `omni.kit.scene_view.xr_utils-1.0.1`
+
+**2. Runtime: it's REAL OpenXR.** The `omni.kit.xr.system.openxr`
+extension's README documents:
+
+- "OpenXR runtimes registered on the system (Windows Registry or
+  Linux manifests)"
+- `XR_ENABLE_API_LAYERS` environment variable for external layers
+- Standard OpenXR layer negotiation
+
+**No mention of CloudXR.** Windows-Registry-based runtime lookup is
+exactly how SteamVR (and any other OpenXR runtime) registers
+itself. This extension talks to whatever OpenXR runtime is installed
+on the system. **SteamVR → Air Link → Quest IS a valid topology.**
+
+**3. `simulatedxr` is a testing mock**, not CloudXR. The README
+plainly states: "a simulator for XR that allows to render with a
+mock XR system to test rendering and other components". So
+SimulatedXR is for development without a real headset attached.
+The Apple Vision Pro sample uses it because AVP doesn't have a
+locally-attached OpenXR runtime — AVP streams via NVIDIA's own
+protocol, separate from this extension family.
+
+**Implication for our roadmap:**
+
+- **Path C is now GREEN.** Kit's `omni.kit.xr.system.openxr`
+  drives standard OpenXR. SteamVR (free, official OpenXR runtime)
+  + Air Link (free, official Quest feature) is a fully supported
+  combination.
+- **Path B (CloudXR native) is a separate stack entirely.** It
+  would need NVIDIA CloudXR Server software (not in
+  kit-app-template) + a sideloaded CloudXR client on Quest. The
+  XR extensions we just identified do NOT take care of this.
+- Path B and C are NOT collapsed. They're two different stacks
+  that happen to both deliver stereo VR.
+
+### Concrete next steps (Path C — now unblocked)
+
+1. **Install Oculus PC app and SteamVR.** Free, ~30 min combined.
+   The Oculus PC app installs the Air Link service; SteamVR
+   registers itself as the OpenXR runtime that Kit will talk to.
+2. **Set OpenXR runtime to SteamVR.** Windows can have multiple
+   OpenXR runtimes installed; SteamVR has a button "Set SteamVR as
+   OpenXR Runtime" in its settings. Without this, Kit may pick the
+   Oculus runtime (which would actually be fine too — Oculus also
+   has an OpenXR runtime that works with Quest via Air Link, and
+   may even be lower latency than going through SteamVR).
+3. **Pair Quest 2 with PC via Air Link.** On the Quest 2:
+   Settings → System → Quest Link → Air Link → connect to PC.
+4. **Build `senckenberg.messelpit.viewer_xr.kit`** — a new sibling
+   `.kit` file that extends the Viewer base but adds
+   `omni.kit.xr.bundle.generic`. Do NOT modify
+   `viewer_streaming.kit`; XR and WebRTC don't co-exist.
+5. **Set XR settings** for the Messel scene scale (Z-up, meters,
+   ~700 m × 800 m pit means the user starts at meters scale,
+   probably with a "shrink the world to 1:1000" toggle for
+   overview viewing).
+6. **Smoke-test in Quest 2.** Launch the kit with Air Link active;
+   expect the headset to switch into a SteamVR scene with the
+   Messel terrain rendered in stereo.
+
+Estimated effort: **1-2 days** for steps 1-4 if no surprises,
+plus another day or two of scale/locomotion tuning. Not unrealistic
+for this week.
+
+### Path A status
+
+Path A (WebXR over WebRTC) is still the right Senckenberg
+deliverable. Nothing in this audit changed that. But the Path C
+detour now has a clean go-ahead — and a working stereo VR demo on
+your own MQ2 informs everything we'd build on Path A.
