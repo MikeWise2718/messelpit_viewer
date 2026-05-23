@@ -29,31 +29,53 @@ locally before flipping to the streaming variant.
 |---|---|---|
 | 1. Data pipeline (sibling repo) | done | DGM1+DOP20 → `messel.usd` |
 | 2. Desktop Explorer that loads `messel.usd` | done | this repo, `launch.bat` |
-| 3. Camera viewpoints + info panel | in progress | `senckenberg.messelpit` extension |
-| 4. Low-poly variant for Quest streaming | partly | `messel_lo.usd` build exists; not wired into Viewer kit |
-| 5. CloudXR.js / WebXR streaming to Quest browser | not started | Kit SDK 109.0.2+ has it built-in |
-| 6. Info hotspots over fossil-find locations | future | needs Senckenberg coordinate data |
+| 3. Camera viewpoints + info panel | done | works in both desktop and VR variants |
+| 4. Quest 2 in stereoscopic VR via Air Link + OpenXR | **working** | `viewer_xr.kit` + `launch_xr.bat`; see `docs/vr-walkthrough.md` |
+| 5. Low-poly variant for Quest streaming | partly | `messel_lo.usd` build exists; not wired into a streaming kit |
+| 6. 2D WebRTC streaming to a browser | done | `viewer_streaming.kit` + `web-viewer-sample`; see `docs/quest2-stream-test-result.md` |
+| 7. CloudXR.js / WebXR streaming to Quest browser | not started | Kit SDK 109.0.2+ has it built-in; alternative path to #4 |
+| 8. Info hotspots over fossil-find locations | future | needs Senckenberg coordinate data |
+| 9. VR-comfort UI (in-headset controls, locomotion options) | future | desktop controls panel is invisible in VR |
 
 `specs/messelpit-viewer.md` has the full handoff brief with the rationale
-for each decision.
+for each decision. `docs/vr-walkthrough.md` is the operator's recipe for
+the VR variant + lessons learned about Kit's XR API.
 
-## Two kit apps in this repo
+## Kit app variants in this repo
 
-We have **two `.kit` app variants** sharing one domain extension:
+We have **four `.kit` app variants** sharing one domain extension:
 
 - **`senckenberg.messelpit.explorer.kit`** — based on `omni.usd_explorer`.
   Desktop variant with Stage hierarchy, properties panel, content browser,
   File menu, all the local-iteration affordances. This is what `launch.bat`
   runs.
 - **`senckenberg.messelpit.viewer.kit`** — based on `omni.usd_viewer`.
-  Streaming target with minimal UI. Was the original choice for the VR
-  deliverable, but its "viewport-only, no UI" stance made local iteration
-  impossible (no way to add lights, no hierarchy panel), so the Explorer
-  variant was added in parallel.
+  Originally the streaming target with minimal UI. Was the first choice
+  for the VR deliverable, but its "viewport-only, no UI" stance made local
+  iteration impossible (no way to add lights, no hierarchy panel), so the
+  Explorer variant was added in parallel. Currently not used directly.
+- **`senckenberg.messelpit.viewer_streaming.kit`** — Explorer + livestream
+  extensions. Pumps frames out over WebRTC for a browser client (the
+  `web-viewer-sample` sibling project). Launched via
+  `repo.bat launch --name senckenberg.messelpit.viewer_streaming.kit`;
+  no dedicated wrapper.
+- **`senckenberg.messelpit.viewer_xr.kit`** — Explorer + the
+  `omni.kit.xr.bundle.generic` bundle + a hand-authored `vr` profile
+  (`persistent.xr.profile.vr.system.display = "OpenXR"`) so Kit talks to
+  whichever OpenXR runtime is registered on Windows. Tested with Meta
+  Horizon Link's runtime → Quest 2 over Air Link. Launched via
+  `launch_xr.bat`.
 
-Both reference the same `senckenberg.messelpit` extension — so domain logic
-(viewpoints, info panel, auto-load) lives in **one** place. UI factoring is
-split across `ui_desktop.py` and `ui_vr.py` inside that extension.
+All four reference the same `senckenberg.messelpit` extension — so domain
+logic (viewpoints, info panel, auto-load) lives in **one** place. UI
+factoring is split across `ui_desktop.py` and `ui_vr.py`. Viewpoint
+teleport branches inside `controls.py`: if XR is active,
+`XRCore.schedule_set_camera` moves the headset pose; otherwise the persp
+camera is moved via `ViewportCameraState`.
+
+**Streaming + XR cannot share a `.kit` file.** Both want to drive the
+renderer with different swapchain shapes (2D vs stereo), so they live in
+separate apps that share the Explorer base.
 
 ## The unusual vendoring situation
 

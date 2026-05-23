@@ -205,10 +205,33 @@ runs resume.
 **Panels missing after switching to Review and back.** Known: USD Explorer
 saves a per-mode layout. `Window → Layout → Reset Layout` brings them back.
 
-## Streaming to Quest
+## Quest 2 / Quest 3 in VR
 
-Not wired yet. See [CLAUDE.md](CLAUDE.md) for the plan and
-`specs/messelpit-viewer.md` step 4 for the build sequence.
+Working as of 2026-05-23. The viewer can render stereoscopically to a
+Meta Quest 2 (or Quest 3) over Air Link, via Meta Horizon Link's
+built-in OpenXR runtime.
+
+Quick start (assumes Meta Horizon Link installed + Quest paired):
+
+```cmd
+launch_xr.bat
+```
+
+Then in the headset, engage Air Link (Meta button → Quick Settings →
+Quest Link → Launch), and in the Kit window on the PC click
+`Window → Rendering → XR → Start XR`.
+
+Viewpoint buttons in the desktop Messel Pit Controls panel teleport
+the headset view; controller thumbsticks do smooth/teleport
+locomotion. Full setup recipe, lessons learned, and the API notes
+for what worked (`schedule_set_camera`) vs. didn't
+(`schedule_set_space_origin`) are in
+[`docs/vr-walkthrough.md`](docs/vr-walkthrough.md).
+
+A separate, browser-based streaming variant
+(`viewer_streaming.kit` + `web-viewer-sample`) is also wired up — see
+`docs/quest2-stream-test-result.md` for the 2D WebRTC pipeline, used
+for testing without VR.
 
 ## Data pipeline (sibling repo)
 
