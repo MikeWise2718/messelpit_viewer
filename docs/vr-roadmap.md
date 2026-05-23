@@ -14,6 +14,14 @@ There are **three architectural paths** to get there. They are not
 incremental — picking one means committing to a different streaming
 stack than the one we just got working.
 
+> **Update 2026-05-21 (after Kit XR audit):** the path comparison below
+> reflects the initial framing, but a closer look at Kit SDK 110.1.1
+> revealed three things that change the picture. See
+> **[Audit findings](#audit-findings-2026-05-21)** at the bottom of this
+> doc before acting on the path comparison. Short version: Path B and
+> Path C may collapse into the same path, and a registry-pull experiment
+> is the next step to find out.
+
 ## Path comparison
 
 | Aspect | Path A: WebXR over WebRTC | Path B: CloudXR (native) | Path C: SteamVR + Air Link |
@@ -167,12 +175,104 @@ If you want to keep momentum, in priority order:
 
 | Item | Status | Path | Notes |
 |---|---|---|---|
-| Investigate Kit XR extension support in 110.1.1 | not started | C | Greppable: `omni.kit.xr`, `omni.xr.*` |
-| Install SteamVR + Oculus PC app, set up Air Link | not started | C | Free; just time |
-| Configure Kit with OpenXR output mode | not started | C | New `.kit` variant likely |
-| Test Path C end-to-end with Messel scene | not started | C | The actual demo |
+| Investigate Kit XR extension support in 110.1.1 | **done** | C | See [Audit findings](#audit-findings-2026-05-21). XR exts exist but uncached. |
+| Probe XR registry availability (throwaway .kit) | next | B/C | ~10 min; answers whether `omni.kit.xr.bundle.generic` even fetches |
+| Inspect `bundle.generic`'s `extension.toml` post-fetch | next | B/C | Tells us SteamVR-OpenXR vs CloudXR-only |
+| Install SteamVR + Oculus PC app, set up Air Link | gated on probe | C | Skip if probe shows bundle is CloudXR-only |
+| Build `viewer_xr.kit` (sibling, not modifying streaming kit) | not started | B or C | Streaming and XR cannot share a `.kit` |
+| Test end-to-end with Messel scene | not started | B or C | The actual demo |
 | Add viewpoint buttons to web-viewer-sample | not started | side | Works without VR, useful regardless |
 | Evaluate CloudXR.js / WebXR client options | not started | A | Big read of NVIDIA spatial docs |
 | Wire CloudXR.js into streaming kit | not started | A | Depends on previous |
-| Stereo rendering perf budget on RTX 4090 | not started | A | Likely need `messel_lo.usd` |
-| Locomotion UX design (teleport vs smooth vs viewpoint) | not started | A or C | Worth a small spec |
+| Stereo rendering perf budget on RTX 4090 | not started | A or B | Likely need `messel_lo.usd` |
+| Locomotion UX design (teleport vs smooth vs viewpoint) | not started | any | Worth a small spec |
+
+---
+
+## Audit findings (2026-05-21)
+
+After a local audit of `kit-app-template/_build/.../extscache/` and the
+Kit SDK kernel manifest, here's what we actually know vs. the assumptions
+in the path comparison above:
+
+### What's present in Kit SDK 110.1.1
+
+Kit's kernel declares paths for XR extensions, meaning they exist and
+can be pulled from the NVIDIA registry on demand:
+
+- `omni.kit.xr.core`
+- `omni.kit.xr.system.openxr` (the SteamVR-relevant one, in name)
+- `omni.kit.xr.bundle.generic` (probable SteamVR/OpenXR bundle)
+- `omni.kit.xr.bundle.apple_vision_pro`
+- `omni.kit.xr.bundle.ipad`
+- `omni.kit.xr.ui.*`, `omni.kit.scene_view.xr*`
+
+Source: `kit-app-template/_build/windows-x86_64/release/kit/site/sitecustomize.py`
+lines 567-586.
+
+### What's NOT present
+
+- **No XR extensions in `extscache/`** — none have been pulled yet.
+  Build adds them when something depends on them.
+- **None of our `.kit` files mention XR** —
+  `senckenberg.messelpit.{explorer,viewer,viewer_streaming}.kit` are
+  all XR-free.
+- **No SteamVR/Quest sample app ships with kit-app-template.** Only
+  `omni.app.dev.xr.avp.kit` (Apple Vision Pro) and
+  `omni.app.dev.xr.ipad.kit` (iPad AR) exist as references — both
+  using `persistent.xr.profile.ar.simulatedxr.*` settings, which
+  **points at NVIDIA's CloudXR runtime, not SteamVR**.
+- **No mention of OpenXR, SteamVR, headset, stereoscopic, or VR**
+  in any of `readme-assets/additional-docs/*.md` or template READMEs.
+
+### The pivotal unknown
+
+**Does `omni.kit.xr.bundle.generic` actually drive a SteamVR OpenXR
+runtime, or does it require CloudXR Server (NVIDIA's own stack)?**
+
+The naming says OpenXR — which is an open standard SteamVR implements.
+But the AVP sample's `simulatedxr` settings hint that the whole
+`omni.kit.xr.*` family may assume CloudXR as the transport. If that's
+the case, Path C (SteamVR + Air Link, no NVIDIA software on the Quest)
+collapses, and the "real VR" choice becomes:
+
+- **Path A** (WebXR over WebRTC) — what we want for the museum
+- **Path B** (CloudXR with sideloaded Quest client app) — the only
+  pre-museum option for stereo VR on this hardware
+
+You can't tell which from the manifest alone. We need to fetch
+`omni.kit.xr.bundle.generic` and read its `extension.toml` to see
+what runtimes it links against. That's the next concrete step.
+
+### Streaming and XR can't share a `.kit`
+
+Both `omni.kit.livestream.app` and the XR extensions want to drive
+the Hydra renderer. They expect different swapchain shapes (2D vs.
+stereo). So a "VR-capable" build is a *third* sibling app, not a
+flag on `viewer_streaming.kit`:
+
+- `senckenberg.messelpit.explorer.kit` — desktop iteration (have)
+- `senckenberg.messelpit.viewer.kit` — base for streaming (have)
+- `senckenberg.messelpit.viewer_streaming.kit` — adds WebRTC (have)
+- `senckenberg.messelpit.viewer_xr.kit` — adds XR (future, separate)
+
+This is actually clean — it means the streaming work we did isn't
+wasted, and the VR work won't break it.
+
+### Concrete next step: registry probe
+
+Create a throwaway `.kit` that depends on `omni.kit.xr.bundle.generic`
+and `omni.kit.xr.system.openxr`, run `repo.bat build`, observe:
+
+1. **Does packman fetch from the public registry?** If yes (no 401),
+   we have access. If no, we need NVIDIA Enterprise registry credentials
+   and the whole XR path may be gated behind a license.
+2. **What is `bundle.generic`'s `extension.toml`?** Look for runtime
+   linkage: SteamVR? Monado? Native OpenXR? CloudXR Server?
+3. **What other extensions get pulled in transitively?** If something
+   called `cloudxr-server` or `nvidia-cloudxr-runtime` shows up, that's
+   the answer.
+
+Time budget: ~10 minutes if registry pull works, then ~5 minutes of
+file inspection. After that we can update this doc with a definitive
+B-vs-C verdict.
