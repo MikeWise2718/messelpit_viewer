@@ -1,12 +1,14 @@
 """Messel Pit extension entry point.
 
-Lifecycle only. Holds the controller and the active UI; both are constructed
+Lifecycle only. Holds the controller and one or two UIs; all are constructed
 during on_startup and destroyed during on_shutdown.
 
-The UI is chosen at startup:
-  - If a livestream is active (Kit streaming variant), instantiate the VR UI
-    (currently a stub; will use omni.ui.scene for in-viewport billboards).
-  - Otherwise, instantiate the desktop docked side panel.
+The UIs are chosen at startup:
+  - Desktop docked side panel: always built if running in a kit that has the
+    Explorer-style viewport (i.e. not the headless streaming variant).
+  - In-VR floating panel: built additionally if omni.kit.xr.core is present
+    (i.e. we're running viewer_xr.kit). The panel itself only appears once
+    the user clicks Start XR; ui_vr subscribes to xr_profile.vr.enable.
 
 Auto-loading the stage is handled here (not in the explorer.setup extension)
 so the same logic applies to both the Explorer and the streaming Viewer kit
@@ -54,6 +56,20 @@ def _is_streaming_active() -> bool:
         return False
 
 
+def _is_xr_available() -> bool:
+    """Whether the host kit has XR support loaded (viewer_xr.kit).
+
+    Used to decide whether to build the in-VR floating panel in addition to
+    the desktop one. The VR UI itself imports XR modules lazily and no-ops
+    if they're missing, so this gate is a courtesy.
+    """
+    try:
+        manager = omni.kit.app.get_app().get_extension_manager()
+        return manager.is_extension_enabled("omni.kit.xr.core")
+    except Exception:
+        return False
+
+
 class MesselpitExtension(omni.ext.IExt):
     def on_startup(self, ext_id: str) -> None:
         self._ext_id = ext_id
@@ -65,22 +81,30 @@ class MesselpitExtension(omni.ext.IExt):
             asyncio.ensure_future(_auto_open_stage(usd_path))
 
         self._controls = MesselControls()
+        self._uis = []
 
         if _is_streaming_active():
-            carb.log_info("[messelpit] livestream detected → VR UI")
-            self._ui = MesselVrUI(self._controls)
+            carb.log_info("[messelpit] livestream detected → VR UI only")
+            self._uis.append(MesselVrUI(self._controls))
         else:
             carb.log_info("[messelpit] desktop UI")
-            self._ui = MesselDesktopUI(self._controls)
+            self._uis.append(MesselDesktopUI(self._controls))
+            if _is_xr_available():
+                carb.log_info("[messelpit] XR available → adding VR panel")
+                self._uis.append(MesselVrUI(self._controls))
 
         if self._settings.get_as_bool(SETTING_SHOW_PANEL):
-            self._ui.show()
+            for ui in self._uis:
+                ui.show()
 
     def on_shutdown(self) -> None:
         carb.log_info(f"[messelpit] shutdown ({self._ext_id})")
-        if self._ui is not None:
-            self._ui.destroy()
-            self._ui = None
+        for ui in self._uis:
+            try:
+                ui.destroy()
+            except Exception as exc:
+                carb.log_warn(f"[messelpit] UI destroy raised: {exc}")
+        self._uis = []
         if self._controls is not None:
             self._controls.destroy()
             self._controls = None

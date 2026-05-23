@@ -15,6 +15,15 @@ authors = ["Senckenberg Naturmuseum Frankfurt"]
 # left out to keep our deps minimal and let the host .kit decide. If we ever
 # build a "vanilla Kit" smoke test that doesn't load a setup, add it back.
 
+# Optional XR deps. These are present in the viewer_xr.kit (via
+# omni.kit.xr.bundle.generic + omni.kit.scene_view.xr_utils that ships with
+# the XR ui.stage extension) and absent in the desktop kit. Marked optional
+# so the extension still loads in the desktop kit; ui_vr.py imports them
+# lazily so a missing module fails the panel build but not the extension.
+"omni.kit.xr.core" = { optional = true }
+"omni.kit.scene_view.xr" = { optional = true }
+"omni.kit.scene_view.xr_utils" = { optional = true }
+
 [[python.module]]
 name = "senckenberg.messelpit"
 
