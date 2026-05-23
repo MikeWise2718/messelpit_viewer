@@ -70,13 +70,76 @@ folders.'++' = [
     "${app}/../extscache"
 ]
 
-# XR session settings -- to be tuned after first smoke test. Defaults
-# kept here as commented hints so we know what knobs exist:
-# [settings.xr]
-# profile = "vr"                          # vs "ar" for passthrough
-# stage.scaleToMeters = 1.0               # Messel USD is already meters
-# locomotion.enabled = true               # standard teleport + smooth
-# locomotion.style = "teleport"           # or "smooth"
+# XR profile + renderer settings. Traced from omni.kit.xr.core's
+# extension.toml (which ships defaults for the built-in "vr" profile)
+# and the AVP/iPad reference apps in kit/apps/. The pieces:
+#
+#   - persistent.xr.profile.vr.system.display = "OpenXR" -- picks the
+#     OpenXR system plugin (the only realistic alternative is
+#     "SimulatedXR" for headless testing). _check_system_can_start in
+#     xr_profile_settings_window.py reads this to decide which runtime
+#     to talk to.
+#
+#   - renderer.enabled/active = 'rtx' -- XR requires RTX. The check at
+#     XRCore.check_current_renderer_supported() refuses to start
+#     otherwise. multiGpu=true mirrors the AVP/iPad reference apps.
+#
+#   - persistent.rtx.modes.rt2.enabled = true (pt off) -- RT2 (real-time
+#     ray tracing) is the supported rendermode for XR; path tracing is
+#     too slow and not supported.
+#
+#   - xr.debug = true -- verbose XR diagnostics in the log. Turn off
+#     after the headset is reliably engaging.
+#
+#   - /xr/vr/enabled = true -- triggers _start_profile_on_app_ready
+#     (xr_profile_settings_window.py line 169) which auto-clicks
+#     "Start VR" once the Kit window finishes loading. Set to false
+#     to require manual click on Window -> Rendering -> Virtual Reality.
+
+# XR + renderer settings. The "vr" profile name is built-in -- defaults
+# live in omni.kit.xr.core/config/extension.toml under defaults.xr.profile.vr.*
+# We only need to override system/display to pick OpenXR over SimulatedXR.
+# Using subtables (rather than flat dotted keys under a bare [settings])
+# because [settings.app.exts] above already opened a subtable of [settings],
+# which forbids reopening [settings] in strict TOML.
+
+# Profile picker menu location. Default is "Window/Rendering" -- explicit
+# here for visibility. Auto-start the VR session once the Kit window is
+# ready (triggers _start_profile_on_app_ready in
+# xr_profile_settings_window.py line 169). debug=true for verbose XR
+# diagnostics during smoke-test phase.
+[settings.xr]
+debug = true
+
+[settings.xr.profiles.menu]
+location = "Window/Rendering"
+
+[settings.xr.vr]
+enabled = true
+
+# Pick OpenXR (the alternative would be SimulatedXR for headless testing).
+# _check_system_can_start in xr_profile_settings_window.py reads this to
+# decide which runtime to talk to. On this PC, Meta Horizon Link's
+# OpenXR runtime is registered as HKLM\SOFTWARE\Khronos\OpenXR\1 ActiveRuntime.
+[settings.persistent.xr.profile.vr.system]
+display = "OpenXR"
+
+# XR requires RTX renderer. XRCore.check_current_renderer_supported()
+# refuses to start the profile otherwise. multiGpu mirrors AVP/iPad.
+[settings.renderer]
+enabled = "rtx"
+active = "rtx"
+
+[settings.renderer.multiGpu]
+enabled = true
+
+# RT2 (real-time ray tracing) is the supported XR rendermode; path
+# tracing is too slow and not supported.
+[settings.persistent.rtx.modes.rt2]
+enabled = true
+
+[settings.persistent.rtx.modes.pt]
+enabled = false
 
 
 ########################################################################################################################
