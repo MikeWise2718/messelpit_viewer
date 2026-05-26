@@ -130,17 +130,24 @@ messelpit_viewer/
 ├── README.md                                this file
 ├── CLAUDE.md                                project intent, architecture, conventions
 ├── VENDORED_FROM                            kit-app-template upstream commit
-├── launch.bat                               one-line desktop launch wrapper
+├── launch.bat                               desktop Explorer launch wrapper
+├── launch_xr.bat                            VR variant launch wrapper (Quest via OpenXR)
 ├── specs/
 │   └── messelpit-viewer.md                  design brief + decisions log
+├── docs/
+│   ├── vr-walkthrough.md                    VR setup recipe + lessons learned
+│   ├── install-emy.md                       per-user install guide (Quest 3 / RTX 3090)
+│   └── quest2-stream-test-result.md         WebRTC streaming pipeline notes
 └── kit-app-template/                        vendored from NVIDIA upstream
     ├── source/apps/
-    │   ├── senckenberg.messelpit.explorer.kit  desktop iteration (USD Explorer)
-    │   └── senckenberg.messelpit.viewer.kit    Quest streaming target (USD Viewer)
+    │   ├── senckenberg.messelpit.explorer.kit         desktop iteration (USD Explorer)
+    │   ├── senckenberg.messelpit.viewer.kit           stock USD Viewer (currently unused)
+    │   ├── senckenberg.messelpit.viewer_streaming.kit Explorer + WebRTC livestream
+    │   └── senckenberg.messelpit.viewer_xr.kit        Explorer + OpenXR (Quest target)
     ├── source/extensions/
     │   ├── senckenberg.messelpit/              domain extension: auto-load,
-    │   │                                       viewpoints, info panel — shared
-    │   │                                       by both kit apps
+    │   │                                       viewpoints, info panel, in-VR panel
+    │   │                                       — shared by all four kit apps
     │   ├── senckenberg.messelpit.explorer.setup/  Explorer app setup
     │   ├── senckenberg.messelpit.viewer.setup/    Viewer app setup
     │   └── senckenberg.messelpit.viewer.messaging/ Quest messaging stub
@@ -159,14 +166,24 @@ customize their `setup.py` despite the "stock" label.
 - **Camera viewpoints**:
   `kit-app-template/source/extensions/senckenberg.messelpit/senckenberg/messelpit/viewpoints.py`.
   Coordinates in local meters; SW corner of the bbox is (0, 0, 0). Adding a
-  viewpoint here makes it appear in the desktop side panel and (once the
-  VR UI is wired) on the Quest.
+  viewpoint here makes it appear in the desktop side panel **and** in the
+  in-VR floating panel automatically (both build their button list from
+  `MesselControls.list_viewpoints()`).
 - **Auto-load mechanism**: setting `/app/messelpit/load_usd` is read by the
   domain extension on startup. `launch.bat` passes it via the
   `--/app/messelpit/load_usd=<path>` Kit CLI override.
-- **Controls panel**:
+- **Desktop controls panel**:
   `kit-app-template/source/extensions/senckenberg.messelpit/senckenberg/messelpit/ui_desktop.py`
   — docked next to the Stage hierarchy.
+- **In-VR floating panel**:
+  `kit-app-template/source/extensions/senckenberg.messelpit/senckenberg/messelpit/ui_vr.py`
+  — subscribes to `xr_profile.vr.enable`, builds an `XRSceneView` widget
+  with Home + viewpoint buttons billboarded to the user.
+- **Viewpoint teleport**:
+  `kit-app-template/source/extensions/senckenberg.messelpit/senckenberg/messelpit/controls.py`
+  — `_apply_viewpoint` checks for an active XR profile and calls
+  `XRCore.schedule_set_camera` when in VR; falls back to
+  `ViewportCameraState` move on the persp camera otherwise.
 - **Layout mode default**:
   `kit-app-template/source/extensions/senckenberg.messelpit.explorer.setup/senckenberg/messelpit/explorer/setup/setup.py`
   — schedules a deferred mode switch on startup so the app comes up in
@@ -221,9 +238,17 @@ Then in the headset, engage Air Link (Meta button → Quick Settings →
 Quest Link → Launch), and in the Kit window on the PC click
 `Window → Rendering → XR → Start XR`.
 
-Viewpoint buttons in the desktop Messel Pit Controls panel teleport
-the headset view; controller thumbsticks do smooth/teleport
-locomotion. Full setup recipe, lessons learned, and the API notes
+Once XR engages, a **floating Messel Pit panel** appears in front of
+you in the headset with a green **Home** button (jumps to Pit Rim)
+and one button per viewpoint. Aim at it with the right-hand
+selection beam (toggle with right **A** button) and pull the trigger
+to click. The desktop Messel Pit Controls panel on the PC still
+works too — viewpoint buttons there teleport the headset view as
+well.
+
+Controller thumbsticks do smooth-fly and snap turn; right thumbstick
+push-and-release does arc-teleport (lands only on near-horizontal
+surfaces). Full setup recipe, lessons learned, and the API notes
 for what worked (`schedule_set_camera`) vs. didn't
 (`schedule_set_space_origin`) are in
 [`docs/vr-walkthrough.md`](docs/vr-walkthrough.md).

@@ -35,7 +35,8 @@ locally before flipping to the streaming variant.
 | 6. 2D WebRTC streaming to a browser | done | `viewer_streaming.kit` + `web-viewer-sample`; see `docs/quest2-stream-test-result.md` |
 | 7. CloudXR.js / WebXR streaming to Quest browser | not started | Kit SDK 109.0.2+ has it built-in; alternative path to #4 |
 | 8. Info hotspots over fossil-find locations | future | needs Senckenberg coordinate data |
-| 9. VR-comfort UI (in-headset controls, locomotion options) | future | desktop controls panel is invisible in VR |
+| 9. In-VR floating panel (Home + viewpoints) | **built, untested in headset** | `ui_vr.py` builds an `XRSceneView` widget on `xr_profile.vr.enable`; pending Quest verification |
+| 10. VR-comfort UI (locomotion tuning, vignette, etc.) | future | speed/vertMovement tuneable via `navigation/speed` setting; defaults currently stock |
 
 `specs/messelpit-viewer.md` has the full handoff brief with the rationale
 for each decision. `docs/vr-walkthrough.md` is the operator's recipe for
@@ -72,6 +73,15 @@ factoring is split across `ui_desktop.py` and `ui_vr.py`. Viewpoint
 teleport branches inside `controls.py`: if XR is active,
 `XRCore.schedule_set_camera` moves the headset pose; otherwise the persp
 camera is moved via `ViewportCameraState`.
+
+The XR kit instantiates **both** UIs side-by-side: the desktop docked
+panel still appears on the PC monitor, and `ui_vr.py` additionally
+subscribes to `xr_profile.vr.enable` and builds a floating 3D panel via
+`XRSceneView` + `UiContainer` the moment the user clicks Start XR. The
+panel is parented to `LookAtCameraSpace` so it billboards toward the
+user, with a 1.2 m forward translation. Selection is driven by the
+stock right-hand A-button beam → trigger click (same as the upstream
+B-button settings menu).
 
 **Streaming + XR cannot share a `.kit` file.** Both want to drive the
 renderer with different swapchain shapes (2D vs stereo), so they live in
@@ -112,11 +122,20 @@ fooled if `git status` reports a "clean" working tree after you've edited
 `kit-app-template/source/extensions/senckenberg.messelpit/` is the **domain
 extension** — pure new code:
 
-- `extension.py` — IExt lifecycle (`on_startup`, `on_shutdown`)
-- `controls.py` — domain logic
+- `extension.py` — IExt lifecycle (`on_startup`, `on_shutdown`); chooses
+  which UIs to build based on which extensions are loaded
+- `controls.py` — domain logic; `_apply_viewpoint` branches XR vs persp camera
 - `ui_desktop.py` — docked tabbed side panel (Viewpoints + Info)
-- `ui_vr.py` — stub for the VR factory
+- `ui_vr.py` — floating in-VR panel; subscribes to xr_profile.vr.enable
+  and builds an `XRSceneView`-hosted `omni.ui` widget on session start
 - `viewpoints.py` — preset camera coordinates in local meters
+
+`config/extension.toml` declares the XR-related deps
+(`omni.kit.xr.core`, `omni.kit.scene_view.xr`,
+`omni.kit.scene_view.xr_utils`) as **optional** so the extension still
+loads in the desktop and streaming kits. `ui_vr.py` also imports those
+modules lazily — if neither path resolves, the VR UI logs a warning and
+no-ops; the desktop UI is unaffected.
 
 `kit-app-template/source/apps/senckenberg.messelpit.*.kit` — both `.kit`
 files have manual edits beyond the template scaffolding (excluded extensions,
