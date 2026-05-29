@@ -147,15 +147,27 @@ class MesselVrUI:
         ]
         carb.log_info("[messelpit] VR UI subscribed to xr_profile.vr events")
 
-        # If XR is already active when we subscribe (hot-reload, extension
-        # restart inside an XR session), build the panel immediately.
-        profile = XRCore.get_singleton().get_current_profile()
-        if profile is not None and profile.is_enabled():
-            self._build_panel()
+        # Don't build the panel here even if the profile reports as enabled.
+        # With xr.vr.enabled = true in the .kit, is_enabled() returns true
+        # during extension on_startup -- before the renderer's swapchain is
+        # ready -- and creating an XRSceneView at that point crashes Kit in
+        # bindMemory at graphics-environment init (~6.4s into startup,
+        # exit 0xC0000005). The panel only builds when xr_profile.vr.enable
+        # fires for real, which happens after the renderer is up.
 
     def _on_profile_enable(self, event: carb.events.IEvent) -> None:
-        carb.log_info("[messelpit] xr_profile.vr.enable → building panel")
-        self._build_panel()
+        # Building an XRSceneView here races the XR runtime's swapchain
+        # init and crashes Kit at bindMemory / "Failed to initialize
+        # graphics environment" ~90ms after the event (verified in log
+        # kit_20260529_163707.log). usd_viewer hit the same wall and
+        # abandoned the floating-3D billboard approach (see their
+        # docs/vr-panel-handoff-2026-05-29.md). For now: skip the panel
+        # so the headset gets the scene without crashing. Revisit once
+        # we have a non-XRSceneView path for in-VR UI.
+        carb.log_info(
+            "[messelpit] xr_profile.vr.enable → in-VR panel disabled "
+            "(XRSceneView crashes Kit on session start)"
+        )
 
     def _on_profile_disable(self, event: carb.events.IEvent) -> None:
         carb.log_info("[messelpit] xr_profile.vr.disable → tearing down panel")
