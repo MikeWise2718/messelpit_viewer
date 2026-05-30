@@ -117,6 +117,14 @@ location = "Window/Rendering"
 [settings.xr.vr]
 enabled = true
 
+# Force the "vr" tool layout. Without this, persistent.xr.tools.layout in
+# user.config.json can end up as "" (empty) -- observed after sibling-app
+# experiments -- which loads NO XR tools and leaves the user with no
+# teleport beam, no controller raycast, no in-VR settings menu. Pinning
+# here makes the layout independent of per-machine user.config drift.
+[settings.persistent.xr.tools]
+layout = "vr"
+
 # Pick OpenXR (the alternative would be SimulatedXR for headless testing).
 # _check_system_can_start in xr_profile_settings_window.py reads this to
 # decide which runtime to talk to. On this PC, Meta Horizon Link's
