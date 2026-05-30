@@ -57,6 +57,14 @@ class MesselControls:
         profile = xr_core.get_current_profile() if xr_core else None
         if profile is None or not profile.is_enabled():
             return False
+        # profile.is_enabled() returns True from extension startup because
+        # the .kit sets xr.vr.enabled = true, but a real XR session isn't
+        # running until the user clicks Start XR. Without this second check
+        # the desktop viewpoint buttons silently no-op (schedule_set_camera
+        # queues against a not-yet-running session) until Start XR. Once
+        # the headset is engaged, displayDevice gets registered.
+        if xr_core.get_input_device("displayDevice") is None:
+            return False
 
         transform = _viewpoint_to_matrix(vp)
         try:
