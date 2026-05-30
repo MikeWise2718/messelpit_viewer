@@ -19,6 +19,7 @@ from __future__ import annotations
 import asyncio
 
 import carb
+import carb.events
 import carb.settings
 import omni.ext
 import omni.kit.app
@@ -26,6 +27,7 @@ import omni.usd
 
 from .controls import MesselControls
 from .messelpit_menu_tool import create_tool as _create_xr_menu_tool
+from .screenshot_service import ScreenshotService
 from .ui_desktop import MesselDesktopUI
 from .ui_vr import MesselVrUI
 
@@ -84,6 +86,16 @@ class MesselpitExtension(omni.ext.IExt):
         self._controls = MesselControls()
         self._uis = []
         self._xr_menu_tool = None
+        self._screenshot_service = None
+        self._xr_event_subs: list = []
+
+        # F9 hotkey is always-on. Auto-screenshot is gated by XR session;
+        # we hook it onto the same xr_profile.vr.enable/disable events
+        # that ui_vr.py listens to. Keeps a per-5s rolling buffer of the
+        # whole desktop including the XR mirror, which is what we need
+        # for debugging in-VR panel layout (the user can't see the
+        # desktop while the headset is on).
+        self._screenshot_service = ScreenshotService()
 
         if _is_streaming_active():
             carb.log_info("[messelpit] livestream detected → VR UI only")
@@ -94,17 +106,50 @@ class MesselpitExtension(omni.ext.IExt):
             if _is_xr_available():
                 carb.log_info("[messelpit] XR available → adding VR panel")
                 self._uis.append(MesselVrUI(self._controls))
-                # De-risking stub for the action-map plumbing. Logs on
-                # enable/disable/button-release. Kept on the instance so
-                # XRToolComponentBase's registration stays alive.
-                self._xr_menu_tool = _create_xr_menu_tool()
+                # In-VR menu tool. Constructs an XRSceneView floating
+                # panel on first button press (left-Y in dual-controller
+                # mode, right-B in single-right). Kept on the instance
+                # so XRToolComponentBase's registration stays alive.
+                self._xr_menu_tool = _create_xr_menu_tool(self._controls)
+                self._wire_screenshot_xr_gate()
 
         if self._settings.get_as_bool(SETTING_SHOW_PANEL):
             for ui in self._uis:
                 ui.show()
 
+    def _wire_screenshot_xr_gate(self) -> None:
+        """Start auto-screenshot on xr_profile.vr.enable, stop on .disable."""
+        try:
+            from omni.kit.xr.core import XRCore
+        except ImportError:
+            return
+        message_bus = XRCore.get_singleton().get_message_bus()
+        enable_type = carb.events.type_from_string("xr_profile.vr.enable")
+        disable_type = carb.events.type_from_string("xr_profile.vr.disable")
+        self._xr_event_subs = [
+            message_bus.create_subscription_to_pop_by_type(
+                enable_type,
+                lambda _e: self._screenshot_service.start_auto()
+                if self._screenshot_service is not None
+                else None,
+            ),
+            message_bus.create_subscription_to_pop_by_type(
+                disable_type,
+                lambda _e: self._screenshot_service.stop_auto()
+                if self._screenshot_service is not None
+                else None,
+            ),
+        ]
+
     def on_shutdown(self) -> None:
         carb.log_info(f"[messelpit] shutdown ({self._ext_id})")
+        self._xr_event_subs = []
+        if self._screenshot_service is not None:
+            try:
+                self._screenshot_service.destroy()
+            except Exception as exc:
+                carb.log_warn(f"[messelpit] screenshot destroy raised: {exc}")
+            self._screenshot_service = None
         for ui in self._uis:
             try:
                 ui.destroy()
