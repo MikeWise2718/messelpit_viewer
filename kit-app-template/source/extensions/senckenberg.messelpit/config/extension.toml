@@ -35,3 +35,14 @@ messelpit.load_usd = ""
 
 # Whether the docked controls panel is visible by default.
 messelpit.ui.show_panel = true
+
+[settings]
+# Register this extension's xrmanifests folder so Kit picks up our custom
+# action map (xrmanifests/action_maps/messelpit_vr_oculus_touch.json).
+# Mirrors omni.kit.xr.core's own pattern:
+#   xr.manifests."omni.kit.xr.core" = "xrmanifests"
+# Our manifest has priority 100 (vs. stock 30), so when a Touch/Touch Plus
+# controller binds, Kit picks ours over the stock vr_right_oculus_touch.
+# The manifest declares messelpit_menu in its "tools" list, which causes
+# Kit to call MesselpitMenuTool.on_enable() on session start.
+xr.manifests."senckenberg.messelpit" = "xrmanifests"

@@ -1,0 +1,34 @@
+{
+    "version": 1,
+    "priority": 100,
+    "name": "Messelpit VR Oculus (Single Right)",
+    "toolsLayout": "vr",
+    "tags": [
+        {
+            "inputDevice": "/user/hand/right",
+            "tag": "right_oculus_touch_components"
+        }
+    ],
+    "tools": [
+        "teleport",
+        "grab",
+        "move",
+        "select",
+        "navigation",
+        "messelpit_menu"
+    ],
+    "actions": {
+        "xr_right_teleport_backward": "/user/hand/right/dpad_down",
+        "xr_right_teleport_forward": "/user/hand/right/dpad_up",
+        "xr_navigation_rotate_left": "/user/hand/right/dpad_left",
+        "xr_navigation_rotate_right": "/user/hand/right/dpad_right",
+        "xr_messelpit_menu": "/user/hand/right/b",
+
+        "xr_right_toggle_beam": "/user/hand/right/a",
+        "xr_right_grab": "/user/hand/right/squeeze",
+        "xr_right_grab_manipulate": "/user/hand/right/thumbstick",
+        "xr_right_select_beam": "/user/hand/right/trigger",
+        "xr_right_grab_select_beam": "/user/hand/right/squeeze",
+        "xr_right_select_move": "/user/hand/right/thumbstick"
+    }
+}

@@ -25,6 +25,7 @@ import omni.kit.app
 import omni.usd
 
 from .controls import MesselControls
+from .messelpit_menu_tool import create_tool as _create_xr_menu_tool
 from .ui_desktop import MesselDesktopUI
 from .ui_vr import MesselVrUI
 
@@ -82,6 +83,7 @@ class MesselpitExtension(omni.ext.IExt):
 
         self._controls = MesselControls()
         self._uis = []
+        self._xr_menu_tool = None
 
         if _is_streaming_active():
             carb.log_info("[messelpit] livestream detected → VR UI only")
@@ -92,6 +94,10 @@ class MesselpitExtension(omni.ext.IExt):
             if _is_xr_available():
                 carb.log_info("[messelpit] XR available → adding VR panel")
                 self._uis.append(MesselVrUI(self._controls))
+                # De-risking stub for the action-map plumbing. Logs on
+                # enable/disable/button-release. Kept on the instance so
+                # XRToolComponentBase's registration stays alive.
+                self._xr_menu_tool = _create_xr_menu_tool()
 
         if self._settings.get_as_bool(SETTING_SHOW_PANEL):
             for ui in self._uis:
@@ -105,6 +111,8 @@ class MesselpitExtension(omni.ext.IExt):
             except Exception as exc:
                 carb.log_warn(f"[messelpit] UI destroy raised: {exc}")
         self._uis = []
+        # Drop the XR tool reference; the base class unregisters itself.
+        self._xr_menu_tool = None
         if self._controls is not None:
             self._controls.destroy()
             self._controls = None
