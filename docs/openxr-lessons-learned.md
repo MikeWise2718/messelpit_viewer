@@ -615,6 +615,43 @@ We left `PhysicsCollisionAPI` in the build script because it's harmless
 and may be useful for future physics work (rolling balls, character
 controller, dropping objects). It does not hurt teleport.
 
+### Two teleport tools live in this app — Omniverse Kit's vs OpenXR's
+
+Conceptually distinct, easy to confuse. A precise framing:
+
+| | Desktop nav teleport | XR controller teleport |
+|---|---|---|
+| Extension | `omni.kit.viewport.navigation.teleport` | `omni.kit.xr.ui.stage` |
+| Layer | Pure Omniverse Kit | Kit's wrapper around OpenXR input |
+| Target | Persp camera (`ViewportCameraState`) | XR rig (`XRCore.schedule_set_*`) |
+| Hit test | Kit scene raycast / pickable | **same** Kit scene raycast |
+| Surface filter | None — lands anywhere | `TELEPORT_COLINEAR_THRESHOLD = 0.85` |
+| Input | Mouse click on the viewport | OpenXR action map → `dpad_up` release |
+
+The desktop one ships with the `omni.kit.viewport.navigation.bundle`
+that the Explorer kit pulls in. It shows up as a small cyan triangle
+icon in the viewport (visible in Explorer / Layout mode); clicking on
+the terrain moves the persp camera to the hit point, on the surface,
+no slope restriction. **It's been working since day one, ignored
+during the XR-teleport debugging, and is actually the reference
+implementation for the surface-following the XR side needs.**
+
+OpenXR's only contribution to the XR teleport is the input path —
+OpenXR defines neither the arc, the marker, the colinear filter, nor
+the release-to-commit gesture. Those are all Kit. That's also why the
+same XR teleport works across Quest 2, Quest 3, and other OpenXR
+headsets without per-headset code: OpenXR abstracts the controller
+differences, and Kit's tool logic doesn't change.
+
+**Implication for the open "terrain-following locomotion" item.** The
+desktop nav teleport is a working in-app example of "raycast-down into
+the scene, land on the surface, ignore physics." A future custom XR
+navigation tool that does the same per-frame downcast on the XR rig is
+plausible — same machinery, just on a different camera and triggered
+by a controller axis instead of a mouse click. The code lives in
+`omni.kit.viewport.navigation.teleport` (the `*-1.0.19` build is in
+`%LOCALAPPDATA%\ov\data\exts\v2\`) and is a useful read.
+
 ### Locomotion doesn't follow terrain — user walks through mesh edges
 
 The left-stick fly mode moves the XR rig in a straight line, ignoring
