@@ -30,13 +30,14 @@ locally before flipping to the streaming variant.
 | 1. Data pipeline (sibling repo) | done | DGM1+DOP20 → `messel.usd` |
 | 2. Desktop Explorer that loads `messel.usd` | done | this repo, `launch.bat` |
 | 3. Camera viewpoints + info panel | done | works in both desktop and VR variants |
-| 4. Quest 2 in stereoscopic VR via Air Link + OpenXR | **working** | `viewer_xr.kit` + `launch_xr.bat`; see `docs/vr-walkthrough.md` |
+| 4. Quest 2/3 in stereoscopic VR via Air Link + OpenXR | **working** | `viewer_xr.kit` + `launch_xr.bat`; verified Quest 3 + Touch Plus 2026-05-30; teleport (right A + thumbstick forward + release) and selection beam confirmed in-headset |
 | 5. Low-poly variant for Quest streaming | partly | `messel_lo.usd` build exists; not wired into a streaming kit |
 | 6. 2D WebRTC streaming to a browser | done | `viewer_streaming.kit` + `web-viewer-sample`; see `docs/quest2-stream-test-result.md` |
 | 7. CloudXR.js / WebXR streaming to Quest browser | not started | Kit SDK 109.0.2+ has it built-in; alternative path to #4 |
 | 8. Info hotspots over fossil-find locations | future | needs Senckenberg coordinate data |
-| 9. In-VR floating panel (Home + viewpoints) | **built, untested in headset** | `ui_vr.py` builds an `XRSceneView` widget on `xr_profile.vr.enable`; pending Quest verification |
-| 10. VR-comfort UI (locomotion tuning, vignette, etc.) | future | speed/vertMovement tuneable via `navigation/speed` setting; defaults currently stock |
+| 9. In-VR floating panel (Home + viewpoints) | **dead-end on XRSceneView path; stubbed out** | crashes Kit on session start (renderer-init access violation); see `docs/openxr-lessons-learned.md` "Session 2"; next attempt should follow sibling `usd_viewer`'s handoff-doc recipe |
+| 10. VR-comfort UI (locomotion tuning, vignette, etc.) | future | speed/vertMovement tuneable via `xr.navigation.speed`; defaults currently stock (3 m/s — too slow for 6×9 km terrain) |
+| 11. Terrain-following locomotion | future | stock Kit XR fly mode walks straight through the terrain mesh; needs character-controller or per-frame downcast |
 
 `specs/messelpit-viewer.md` has the full handoff brief with the rationale
 for each decision. `docs/vr-walkthrough.md` is the operator's recipe for
@@ -74,14 +75,28 @@ teleport branches inside `controls.py`: if XR is active,
 `XRCore.schedule_set_camera` moves the headset pose; otherwise the persp
 camera is moved via `ViewportCameraState`.
 
-The XR kit instantiates **both** UIs side-by-side: the desktop docked
-panel still appears on the PC monitor, and `ui_vr.py` additionally
-subscribes to `xr_profile.vr.enable` and builds a floating 3D panel via
-`XRSceneView` + `UiContainer` the moment the user clicks Start XR. The
-panel is parented to `LookAtCameraSpace` so it billboards toward the
-user, with a 1.2 m forward translation. Selection is driven by the
-stock right-hand A-button beam → trigger click (same as the upstream
-B-button settings menu).
+The XR kit instantiates **both** UIs but only the desktop panel is
+visible right now. `ui_vr.py` has scaffolding for an `XRSceneView` +
+`UiContainer` floating 3D panel, but **the `_build_panel()` call is
+stubbed out** — constructing the XRSceneView at session start crashes
+Kit in renderer init (`bindMemory` / "Failed to initialize graphics
+environment", exit `0xC0000005`). See `docs/openxr-lessons-learned.md`
+section "Session 2" for the full crash analysis. The sibling
+`usd_viewer` repo (`D:\senckenberg\usd_viewer`) explored the same path,
+identified four scene-view requirements that need to all be true for
+the panel to render, and documented them in
+`vr-panel-handoff-2026-05-29.md` — those should be the starting point
+for the next attempt.
+
+In the headset right now: stereoscopic terrain renders fine, selection
+beam works (right A toggles selection / teleport mode; left X toggles
+left-hand selection), teleport works on flat-enough surfaces (right
+thumbstick forward + release), and viewpoint navigation works from the
+desktop panel. The desktop panel's `MesselControls` correctly branches
+between persp-camera moves and XR `schedule_set_camera`, gated on
+`xr_core.get_input_device("displayDevice") is not None` rather than
+`profile.is_enabled()` (the latter returns true at extension startup
+and silently no-ops the desktop buttons before Start XR).
 
 **Streaming + XR cannot share a `.kit` file.** Both want to drive the
 renderer with different swapchain shapes (2D vs stereo), so they live in
@@ -126,8 +141,10 @@ extension** — pure new code:
   which UIs to build based on which extensions are loaded
 - `controls.py` — domain logic; `_apply_viewpoint` branches XR vs persp camera
 - `ui_desktop.py` — docked tabbed side panel (Viewpoints + Info)
-- `ui_vr.py` — floating in-VR panel; subscribes to xr_profile.vr.enable
-  and builds an `XRSceneView`-hosted `omni.ui` widget on session start
+- `ui_vr.py` — scaffolding for a floating in-VR panel; subscribes to
+  `xr_profile.vr.enable` but the actual `_build_panel()` call is stubbed
+  (XRSceneView construction crashes Kit; see openxr-lessons-learned.md
+  "Session 2"). Returning to this is on the roadmap.
 - `viewpoints.py` — preset camera coordinates in local meters
 
 `config/extension.toml` declares the XR-related deps
@@ -224,6 +241,132 @@ These are documented at length in the data repo, but they matter here too:
    `launch.bat` prefers `messel_med.usd` for this reason.
 3. **Z-up, meters**: stage settings must agree with what the data repo
    authored. Don't switch the viewer to Y-up.
+
+## How to extend the UI (controls, menus, button actions, settings)
+
+The current shape supports growth without restructuring. Add a feature
+once in `senckenberg.messelpit` and both desktop and (eventually) VR
+clients see it.
+
+### Adding a new domain action
+
+Put the action on `MesselControls` in `controls.py`. Pattern: pure
+domain logic with no `omni.ui` import. Returns `bool` for success/fail
+so the UI can show feedback. If the action behaves differently in XR
+vs persp-camera, branch inside the controller — don't push the
+distinction to the UI.
+
+```python
+# controls.py
+def toggle_orthophoto(self) -> bool:
+    """Hide or show the draped texture; useful for fossil-find overlays."""
+    stage = omni.usd.get_context().get_stage()
+    ...
+```
+
+### Adding a button to the desktop panel
+
+Edit `ui_desktop.py`. The panel is a docked side panel with tabs; add
+the button to the existing tab or a new one. Wire its `clicked_fn` to
+the controller method. Keep the UI dumb — no domain logic in the
+clicked_fn body, just delegate.
+
+```python
+ui.Button("Hide ortho", clicked_fn=self._controls.toggle_orthophoto)
+```
+
+### Adding the same button in VR (when the floating panel is fixed)
+
+Future state — `ui_vr.py` should construct the same logical buttons via
+`omni.ui.Button` in its `WidgetClass`. The button binds the *same*
+`MesselControls` method. One feature, two views. Until the XRSceneView
+crash is resolved, VR-side buttons are aspirational; see roadmap.
+
+### Adding a persistent setting
+
+Two layers:
+
+1. **Define in the `.kit` file** under `[settings.persistent.app.messelpit]`
+   (project-private namespace) or `[settings.app.messelpit]` (non-persistent
+   — defaults only). Persistent settings survive across launches in
+   `%LOCALAPPDATA%\ov\data\Kit\<app>\<ver>\user.config.json`.
+
+2. **Read from `controls.py`** via `carb.settings.get_settings()`. Use
+   `get_as_bool`, `get_as_float`, etc., and `set` to write changes back.
+   Subscribe to changes with `subscribe_to_node_change_events` if the
+   UI needs to react.
+
+```toml
+# .kit
+[settings.persistent.app.messelpit]
+show_ortho = true
+```
+
+```python
+# controls.py
+SETTING_SHOW_ORTHO = "/persistent/app/messelpit/show_ortho"
+def toggle_orthophoto(self) -> bool:
+    cur = self._settings.get_as_bool(SETTING_SHOW_ORTHO)
+    self._settings.set(SETTING_SHOW_ORTHO, not cur)
+    ...
+```
+
+**Persistent namespace landmine:** anything you put under
+`/persistent/xr/...` or `/persistent/rtx/...` is **shared across every
+Kit app on the machine** (see openxr-lessons-learned.md "Session 2").
+Project-specific settings belong under `/persistent/app/messelpit/...`
+which is per-app.
+
+### Adding a top menu item
+
+The Explorer base provides a menu bar via
+`omni.kit.usd_explorer.main.menubar`. To add a project-private menu
+(e.g. "Messelpit → Viewpoints"), use `omni.kit.menu.utils.add_menu_items`
+during `on_startup`. The menu item's command can call a controller
+method directly. Pair each menu item with a hotkey via the same API.
+
+```python
+# extension.py on_startup
+import omni.kit.menu.utils as menu_utils
+self._menu_items = [
+    menu_utils.MenuItemDescription(
+        name="Toggle Orthophoto",
+        onclick_fn=self._controls.toggle_orthophoto,
+        hotkey=(carb.input.KEYBOARD_MODIFIER_FLAG_CONTROL, carb.input.KeyboardInput.O),
+    ),
+]
+menu_utils.add_menu_items(self._menu_items, "Messelpit")
+```
+
+Tear down in `on_shutdown` with `menu_utils.remove_menu_items`.
+
+### What NOT to do
+
+- **Don't subclass or monkey-patch upstream Kit extensions** in this
+  repo's `senckenberg.messelpit` extension. If you need a behavior that
+  only an upstream extension can provide, ask before reaching for the
+  monkey patch — there's usually a settings-driven path.
+- **Don't add menus to `omni.kit.usd_explorer`'s menubar by editing
+  the vendored extension** (`kit-app-template/source/extensions/...`).
+  Use `omni.kit.menu.utils` from our extension instead. The vendored
+  one is a merge-conflict surface.
+- **Don't put `omni.ui` imports at module level in `controls.py`.**
+  Keep the controller importable from headless contexts (tests, CLI
+  inspection, future MCP server).
+- **Don't tie new features to the in-VR panel until it renders.** The
+  desktop panel reaches the headset's PC monitor when the user lifts
+  the visor, so it's a viable interim UI. The user can also drive
+  viewpoint navigation from desktop while in-headset.
+
+### Reference shape that exists today
+
+- Action: `controls.go_to_viewpoint(name)` (in `controls.py`)
+- Desktop UI: viewpoint buttons in `ui_desktop.py:_build_viewpoints_tab`
+- Setting: `/app/messelpit/load_usd` (the auto-open path) and
+  `/app/messelpit/ui/show_panel` (whether the docked panel appears)
+- Extension entry: `extension.py:MesselpitExtension.on_startup`
+
+Copy this pattern for the next feature.
 
 ## What to ask before changing
 

@@ -125,6 +125,26 @@ enabled = true
 [settings.persistent.xr.tools]
 layout = "vr"
 
+# Teleport arc max-height. The default of 5 m is fine for room-scale
+# scenes but useless on Messel: the terrain bbox is ~6 x 9 km and our
+# viewpoints sit 100s of meters above the surface. With a 5 m arc cap,
+# the parabola can only reach the ground if aimed nearly straight down,
+# so casual aiming produces no land target and teleport never commits.
+# Bump well past the typical viewpoint altitude.
+#
+# Two paths exist for this value in Kit:
+#   - persistent.xr.teleport.arc_max_height (flat, the one
+#     xr_teleport_tool.py watches via register_setting_event_handler at
+#     profile/persistent/teleport/arc_max_height)
+#   - persistent.xr.teleport.arc.maxHeight (nested, the UI form seen in
+#     user.config.json)
+# Setting both keeps them in sync regardless of which surface reads it.
+[settings.persistent.xr.teleport]
+arc_max_height = 500.0
+
+[settings.persistent.xr.teleport.arc]
+maxHeight = 500.0
+
 # Pick OpenXR (the alternative would be SimulatedXR for headless testing).
 # _check_system_can_start in xr_profile_settings_window.py reads this to
 # decide which runtime to talk to. On this PC, Meta Horizon Link's

@@ -175,10 +175,15 @@ customize their `setup.py` despite the "stock" label.
 - **Desktop controls panel**:
   `kit-app-template/source/extensions/senckenberg.messelpit/senckenberg/messelpit/ui_desktop.py`
   — docked next to the Stage hierarchy.
-- **In-VR floating panel**:
+- **In-VR floating panel** (currently disabled):
   `kit-app-template/source/extensions/senckenberg.messelpit/senckenberg/messelpit/ui_vr.py`
-  — subscribes to `xr_profile.vr.enable`, builds an `XRSceneView` widget
-  with Home + viewpoint buttons billboarded to the user.
+  — subscribes to `xr_profile.vr.enable`, *but* the actual panel build
+  is stubbed out: constructing an `XRSceneView` at session start
+  crashes Kit in renderer init. The scaffolding (event subscription,
+  widget class, controls binding) remains in place for the next attempt
+  once we understand why. See
+  [`docs/openxr-lessons-learned.md`](docs/openxr-lessons-learned.md)
+  "Session 2" for the analysis.
 - **Viewpoint teleport**:
   `kit-app-template/source/extensions/senckenberg.messelpit/senckenberg/messelpit/controls.py`
   — `_apply_viewpoint` checks for an active XR profile and calls
@@ -224,9 +229,9 @@ saves a per-mode layout. `Window → Layout → Reset Layout` brings them back.
 
 ## Quest 2 / Quest 3 in VR
 
-Working as of 2026-05-23. The viewer can render stereoscopically to a
-Meta Quest 2 (or Quest 3) over Air Link, via Meta Horizon Link's
-built-in OpenXR runtime.
+Working as of 2026-05-30 (Quest 3 + Touch Plus, verified in-headset on
+spearow). The viewer renders stereoscopically to a Meta Quest 2 or
+Quest 3 over Air Link, via Meta Horizon Link's built-in OpenXR runtime.
 
 Quick start (assumes Meta Horizon Link installed + Quest paired):
 
@@ -238,20 +243,37 @@ Then in the headset, engage Air Link (Meta button → Quick Settings →
 Quest Link → Launch), and in the Kit window on the PC click
 `Window → Rendering → XR → Start XR`.
 
-Once XR engages, a **floating Messel Pit panel** appears in front of
-you in the headset with a green **Home** button (jumps to Pit Rim)
-and one button per viewpoint. Aim at it with the right-hand
-selection beam (toggle with right **A** button) and pull the trigger
-to click. The desktop Messel Pit Controls panel on the PC still
-works too — viewpoint buttons there teleport the headset view as
-well.
+What works in-headset:
 
-Controller thumbsticks do smooth-fly and snap turn; right thumbstick
-push-and-release does arc-teleport (lands only on near-horizontal
-surfaces). Full setup recipe, lessons learned, and the API notes
-for what worked (`schedule_set_camera`) vs. didn't
-(`schedule_set_space_origin`) are in
-[`docs/vr-walkthrough.md`](docs/vr-walkthrough.md).
+- **Stereoscopic render** of the Messel terrain over the
+  `messel_lo_quest.usd` mesh (lo-poly variant tuned for Air Link).
+- **Selection beam** — right A toggles between selection mode and
+  teleport mode; left X toggles left-hand selection.
+- **Teleport** — in teleport mode, push the right thumbstick forward
+  and release to commit. The arc only commits on surfaces within ~32°
+  of horizontal (Kit's hard-coded `TELEPORT_COLINEAR_THRESHOLD`), so
+  the pit floor works but pit walls won't.
+- **Smooth fly** — left thumbstick. Default speed (3 m/s) is too slow
+  for the 6×9 km terrain; tuning is on the roadmap.
+- **Smooth rotate** — right thumbstick left/right.
+- **Desktop viewpoint panel still works while in-headset.** Lift the
+  visor to see the PC monitor; click a viewpoint button there and the
+  headset view jumps. (As of commit `f56d64a`, the desktop buttons
+  also work before Start XR — previously they silently no-op'd until
+  the headset was engaged.)
+
+What doesn't work yet:
+
+- **In-VR floating control panel** — scaffolded but disabled; the
+  `XRSceneView` path crashes Kit at session start. Use the desktop
+  panel as the interim controller; see "What's where" above.
+- **Terrain following** — fly mode moves in a straight line, ignoring
+  the terrain mesh. You can walk through the side of the pit. Needs
+  a character controller; on the roadmap.
+
+Full setup recipe, lessons learned, and the API notes are in
+[`docs/vr-walkthrough.md`](docs/vr-walkthrough.md) and
+[`docs/openxr-lessons-learned.md`](docs/openxr-lessons-learned.md).
 
 A separate, browser-based streaming variant
 (`viewer_streaming.kit` + `web-viewer-sample`) is also wired up — see

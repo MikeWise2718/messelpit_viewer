@@ -477,4 +477,169 @@ These are open items that the next viewer doing the same work will face:
 - [USD Explorer template](https://github.com/NVIDIA-Omniverse/kit-app-template/blob/main/templates/apps/usd_explorer/README.md)
 - [Omniverse Spatial / XR docs](https://docs.omniverse.nvidia.com/xr/omniverse-spatial-docs/latest/)
 - [CloudXR.js Meta client](https://docs.omniverse.nvidia.com/xr/omniverse-spatial-docs/latest/clients/meta/01-overview.html)
+
+## Session 2 (2026-05-30): what we actually verified in headset (Quest 3 + Touch Plus)
+
+Earlier sections were written from a Quest 2 + Air Link bring-up. This
+section captures a second round on Quest 3 with the in-VR floating panel
+work that was originally pushed "untested in headset". Several earlier
+optimistic claims turned out to be wrong; the corrections live here, not
+in the original text.
+
+### `XRSceneView + UiContainer + WidgetComponent` is NOT a working recipe yet
+
+The TL;DR's point 5 said "Build the in-VR floating panel with
+`XRSceneView` + `UiContainer` + `WidgetComponent`." That was aspirational.
+In practice the path crashes Kit with a renderer-init access violation:
+
+- Building the `XRSceneView` at extension `on_startup` (because
+  `profile.is_enabled()` returns true with `xr.vr.enabled = true` in the
+  `.kit`) crashes ~6.4 s into launch in `bindMemory` /
+  "Failed to initialize graphics environment" → exit `0xC0000005`.
+- Deferring until `xr_profile.vr.enable` fires (i.e. "Start XR" clicked)
+  defers the same crash by ~90 ms. The construction races the OpenXR
+  swapchain init.
+
+This matches the sibling `usd_viewer` project's documented dead-end:
+`D:\senckenberg\usd_viewer\docs\vr-panel-handoff-2026-05-29.md`
+explicitly enumerates four scene-view requirements that ALL must be true
+for the panel to render correctly (DO_NOT_ATTACH_TO_MAIN_VIEWPORT,
+custom_base_path, controllers-layer piggyback, layer-unit-aware sizing).
+None of those have been verified to fix the crash.
+
+Current state in this repo (commit `b2c036c`): `MesselVrUI._on_profile_enable`
+is stubbed to log only — no XRSceneView is built. The headset renders
+the scene normally; there's no in-VR floating panel, but Kit doesn't
+crash. Viewpoint navigation goes through `controls.go_to_viewpoint()`
+from the desktop panel.
+
+Open work item before claiming "in-VR panel works": revisit with the four
+requirements from the usd_viewer handoff doc, ideally tested in a
+throwaway branch first.
+
+### `profile.is_enabled()` returns True before the session actually starts
+
+`profile.is_enabled()` is True from the moment the XR profile is
+configured in the kit — which is during extension `on_startup` for any
+kit with `xr.vr.enabled = true`. It is **not** a "real XR session
+running" signal. The desktop viewpoint buttons silently no-op'd for
+~tens of seconds at launch until the user clicked Start XR, because
+`controls._teleport_xr_if_active` was sending `schedule_set_camera`
+calls against a session that didn't exist.
+
+Reliable session-active signal:
+```python
+xr_core.get_input_device("displayDevice") is not None
+```
+The headset device only registers once the OpenXR session is created
+(i.e. after Start XR succeeded). Gate XR-only code paths on this, not
+on `profile.is_enabled()`.
+
+Commit `f56d64a` applies this gate to `_teleport_xr_if_active`.
+
+### `xr.tools.layout` can be silently emptied to "" by sibling apps
+
+Persistent XR settings (`persistent.xr.*`) are shared across all Kit
+apps on the machine. Working in `D:\senckenberg\usd_viewer` left
+`persistent.xr.tools.layout = ""` in shared state, which **overrides**
+the `vr` profile's default layout of `"vr"` and loads **no XR tools** —
+no teleport beam, no controller raycast, no in-VR settings menu. Kit's
+action-map resolver logs `Set actionmap no actionmap` / `Set toollist:`
+(empty).
+
+Pin the layout in your `.kit` to defend against this:
+```toml
+[settings.persistent.xr.tools]
+layout = "vr"
+```
+Commit `72fd1b4` adds this.
+
+This is one instance of a broader pattern: **anything under
+`persistent.xr.*` is a shared-state landmine.** Be explicit in the
+`.kit` file about every persistent setting your app needs.
+
+### Quest 3 Touch Plus controllers DO work with the Oculus action map
+
+Despite no dedicated `vr_*_touch_plus.json` in the stock action maps,
+Kit's input-device-tag resolver successfully picks `VR Oculus (Right)`
+for Quest 3 controllers — verified in the log:
+```
+[XR] Active bindings: ... /interaction_profiles/meta/touch_plus_controller
+[XR] Set actionmap VR Oculus (Right)
+[XR] Set toollist: teleport, grab, move, select, navigation, menu,
+```
+The `meta_quest_profile` tag (`xrmanifests/input_device_tags/`)
+declares Touch Plus as one of its accepted interaction profiles, and
+the Oculus action map keys on the right hand's component set (a, b,
+trigger, thumbstick, squeeze) which Touch Plus reports.
+
+Gotcha: it can take ~70 seconds after Kit launch for the action map to
+resolve, and it bounces between empty and full when one controller goes
+idle. Action-map resolution events show in the log as repeated
+`Detected that actionmap needs to be updated`.
+
+### Teleport gestures on Touch (verified Quest 3)
+
+- **Right A** — toggles between selection-beam mode and teleport-arc mode.
+- **Right thumbstick forward, then release** — commits the teleport.
+  The release event is what fires; pushing without releasing only shows
+  the arc preview.
+- **Right thumbstick left/right** — smooth rotate.
+- **Left X** — toggles selection beam on left hand (no left-hand teleport
+  in stock vr layout).
+- **Left thumbstick** — `xr_navigation_fly` (fly mode). Speed governed by
+  `persistent.xr.navigation.speed` (default 3 m/s, way too slow for a
+  6×9 km terrain).
+
+### Teleport surface-normal threshold is hard-coded at 0.85
+
+`omni.kit.xr.ui.stage/xr_tools/xr_teleport_tool.py:39` defines
+`TELEPORT_COLINEAR_THRESHOLD = 0.85`. The teleport arc commits only if
+the hit-surface normal's vertical component exceeds this — i.e. the
+surface is within ~32° of horizontal. On Messel's pit walls (steep) the
+arc visually appears but won't commit. The Messel pit *floor* is flat
+enough; teleport works fine there. Communicate the steep-wall limitation
+to users; it's not configurable per-project without monkey-patching the
+module.
+
+### Teleport uses Kit's scene-pickable raycast, not UsdPhysics
+
+Adding `PhysicsCollisionAPI` to the terrain mesh did **not** affect
+teleport behavior. Kit's XR teleport tool calls
+`self.__usd_layer.get_target_info(...)` which uses the standard
+omni.ui.scene pickable raycast (the same mechanism the selection beam
+uses), not a UsdPhysics scene-query. If the selection beam hits a mesh,
+teleport will also see it (modulo the colinear-normal filter).
+
+We left `PhysicsCollisionAPI` in the build script because it's harmless
+and may be useful for future physics work (rolling balls, character
+controller, dropping objects). It does not hurt teleport.
+
+### Locomotion doesn't follow terrain — user walks through mesh edges
+
+The left-stick fly mode moves the XR rig in a straight line, ignoring
+terrain geometry. From a viewpoint above the pit, fly-mode descent
+*through* the rim is possible; from inside the pit, fly-mode forward
+walks straight off the edge into open space. No floor-following or
+collision constraint is applied by stock Kit XR navigation.
+
+Fixing this needs either:
+- A character-controller (omni.physics, kinematic capsule + downcast).
+- A custom navigation tool that downcasts each frame and clamps Y to
+  the terrain.
+
+Not done. Open work item.
+
+### Refresh of "what's not done" (supersedes line 444–456)
+
+| Item | Status as of 2026-05-30 |
+|---|---|
+| In-VR floating panel verified in headset | Still NOT done. The XRSceneView path crashes Kit; usd_viewer's handoff doc has the recipe to try next. |
+| Locomotion comfort options (vignette, snap turn) | Not done. |
+| Hide desktop panel when XR engages | Not done. |
+| Quest 3 verification | **Done.** Touch Plus binds via the Oculus action map. |
+| `launch_xr.bat` health checks | Not done. |
+| Terrain-following locomotion | New item: stock Kit XR fly mode walks through the mesh. |
+| Fly speed appropriate for 6×9 km terrain | New item: 3 m/s default is unusable; pin `persistent.xr.navigation.speed` higher in the .kit. |
+| Steep-wall teleport (override `TELEPORT_COLINEAR_THRESHOLD`) | New item: monkey-patch from extension if needed. |
   — alternative path: stream to Quest browser instead of OpenXR direct.
