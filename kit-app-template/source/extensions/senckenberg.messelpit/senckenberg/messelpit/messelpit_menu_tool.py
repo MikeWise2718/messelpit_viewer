@@ -48,14 +48,9 @@ XR_GUI_LAYER_GROUP = "messelpit_menu_tool"
 # scaled down to 0.25 via SpatialSource.new_scale_source.
 # Numbers mirror XRMenuTool's constants exactly — it's the known-
 # working size for a comfortable-distance VR menu.
-PANEL_DISTANCE_M = 1.0
+PANEL_DISTANCE_M = 1
 PANEL_WIDTH_M = 4.5
-# Taller than XRMenuTool's 3.0 m to fit the full Viewpoints + About
-# content. With the desktop panel mirrored verbatim, the widget needs
-# ~940 logical pixels of vertical room; at 100 px/m that's 9.4 m, but
-# the panel is then scaled by PANEL_SPATIAL_SCALE so the apparent
-# size in VR stays sane.
-PANEL_HEIGHT_M = 10.0
+PANEL_HEIGHT_M = 3.0
 PANEL_RESOLUTION_SCALE = 10
 PANEL_UNIT_TO_PIXEL_SCALE = 100.0
 PANEL_SPATIAL_SCALE = 0.25
@@ -93,88 +88,91 @@ def _build_widget_class(controls: MesselControls):
                         }
                     }
                 )
-                with ui.VStack(spacing=12, style={"margin": 20}):
-                    # Title -- font_size 36 so "Messel Pit Controls" (the
-                    # full desktop-panel title) fits on one line within the
-                    # ~410 px usable widget width. A bigger font wraps off
-                    # the edge and seems to collapse subsequent children.
-                    ui.Label(
-                        "Messel Pit Controls",
-                        style={
-                            "font_size": 36,
-                            "color": 0xFFEEEEEE,
-                            "alignment": ui.Alignment.CENTER,
-                        },
-                        height=60,
-                        word_wrap=True,
-                    )
-                    ui.Separator(height=4)
-
-                    # Home -- jumps to the canonical "looking into the pit"
-                    # viewpoint. Green so it's the obvious first action.
-                    ui.Button(
-                        "Home",
-                        height=120,
-                        style={
-                            "Button": {
-                                "background_color": 0xFF2D6A4F,
-                                "color": 0xFFFFFFFF,
-                                "border_radius": 4,
+                # Sizes scaled down so the panel fits inside the
+                # stock XRMenuTool geometry (4.5 m x 3.0 m at 1 m).
+                # Larger sizes break the selection-beam coordinate
+                # frame on the controllers USD layer (verified
+                # empirically: distance > 1 m or height > 3 m
+                # causes the beam to detach from the right hand).
+                #
+                # Total content height (~460 px) exceeds the widget's
+                # ~300 px logical area, so wrap in a ScrollingFrame --
+                # same pattern XRMenuTool's XRSettingsWindow uses
+                # internally. The selection beam can scroll the frame
+                # by hovering and using the right thumbstick.
+                with ui.ScrollingFrame(
+                    horizontal_scrollbar_policy=ui.ScrollBarPolicy.SCROLLBAR_ALWAYS_OFF,
+                    vertical_scrollbar_policy=ui.ScrollBarPolicy.SCROLLBAR_AS_NEEDED,
+                ):
+                    with ui.VStack(spacing=6, style={"margin": 12}):
+                        ui.Label(
+                            "Messel Pit Controls",
+                            style={
+                                "font_size": 28,
+                                "color": 0xFFEEEEEE,
+                                "alignment": ui.Alignment.CENTER,
                             },
-                            "Button.Label": {"font_size": 44},
-                        },
-                        clicked_fn=lambda: controls.go_to_viewpoint("Pit Rim"),
-                    )
-
-                    ui.Label(
-                        "Viewpoints",
-                        style={"font_size": 32, "color": 0xFFAAAAAA},
-                        height=48,
-                    )
-
-                    # Viewpoint buttons -- each with a wrapped description
-                    # label below, matching the desktop panel.
-                    for vp in controls.list_viewpoints():
+                            height=40,
+                        )
+                        ui.Separator(height=2)
                         ui.Button(
-                            vp.name,
-                            height=88,
+                            "Home",
+                            height=44,
                             style={
                                 "Button": {
-                                    "background_color": 0xFF3D3D3D,
-                                    "color": 0xFFE0E0E0,
-                                    "border_radius": 4,
+                                    "background_color": 0xFF2D6A4F,
+                                    "color": 0xFFFFFFFF,
+                                    "border_radius": 3,
                                 },
-                                "Button.Label": {"font_size": 36},
+                                "Button.Label": {"font_size": 22},
                             },
-                            clicked_fn=lambda n=vp.name: controls.go_to_viewpoint(n),
+                            clicked_fn=lambda: controls.go_to_viewpoint("Pit Rim"),
                         )
                         ui.Label(
-                            vp.description,
-                            style={"font_size": 20, "color": 0xFF888888},
-                            word_wrap=True,
-                            height=60,
+                            "Viewpoints",
+                            style={"font_size": 18, "color": 0xFFAAAAAA},
+                            height=26,
                         )
-
-                    # About section -- mirrors the desktop "Info" tab.
-                    ui.Label(
-                        "About",
-                        style={"font_size": 32, "color": 0xFFAAAAAA},
-                        height=48,
-                    )
-                    ui.Label(
-                        "Grube Messel -- UNESCO World Heritage fossil site, "
-                        "~30 km SE of Frankfurt. Eocene oil shale, ~47 Ma.",
-                        style={"font_size": 22, "color": 0xFFCCCCCC},
-                        word_wrap=True,
-                        height=80,
-                    )
-                    ui.Label(
-                        "Stage: heightfield from Hessen DGM1 (1 m LiDAR) "
-                        "with DOP20 orthophoto draped on it.",
-                        style={"font_size": 22, "color": 0xFFCCCCCC},
-                        word_wrap=True,
-                        height=80,
-                    )
+                        for vp in controls.list_viewpoints():
+                            ui.Button(
+                                vp.name,
+                                height=36,
+                                style={
+                                    "Button": {
+                                        "background_color": 0xFF3D3D3D,
+                                        "color": 0xFFE0E0E0,
+                                        "border_radius": 3,
+                                    },
+                                    "Button.Label": {"font_size": 20},
+                                },
+                                clicked_fn=lambda n=vp.name: controls.go_to_viewpoint(n),
+                            )
+                            ui.Label(
+                                vp.description,
+                                style={"font_size": 14, "color": 0xFF888888},
+                                word_wrap=True,
+                                height=36,
+                            )
+                        ui.Label(
+                            "About",
+                            style={"font_size": 18, "color": 0xFFAAAAAA},
+                            height=26,
+                        )
+                        ui.Label(
+                            "Grube Messel -- UNESCO World Heritage fossil "
+                            "site, ~30 km SE of Frankfurt. Eocene oil "
+                            "shale, ~47 Ma.",
+                            style={"font_size": 14, "color": 0xFFCCCCCC},
+                            word_wrap=True,
+                            height=54,
+                        )
+                        ui.Label(
+                            "Stage: Hessen DGM1 (1 m LiDAR) + DOP20 "
+                            "orthophoto draped on it.",
+                            style={"font_size": 14, "color": 0xFFCCCCCC},
+                            word_wrap=True,
+                            height=36,
+                        )
 
     return MesselPanelWidget
 

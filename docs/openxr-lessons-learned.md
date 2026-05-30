@@ -680,3 +680,173 @@ Not done. Open work item.
 | Fly speed appropriate for 6×9 km terrain | New item: 3 m/s default is unusable; pin `persistent.xr.navigation.speed` higher in the .kit. |
 | Steep-wall teleport (override `TELEPORT_COLINEAR_THRESHOLD`) | New item: monkey-patch from extension if needed. |
   — alternative path: stream to Quest browser instead of OpenXR direct.
+
+## Session 3 (2026-05-30 evening): the in-VR floating panel actually working
+
+The "Session 2" findings called the XRSceneView path a "dead end." That
+was wrong. In one focused session that evening we got the floating
+panel working end-to-end. Documenting what made the difference, because
+it would have saved us days of head-banging in Session 2.
+
+The full research write-up that led to this lives in
+[`docs/in-vr-ui-research-2026-05-30.md`](in-vr-ui-research-2026-05-30.md).
+This section is the operational summary — what to do, what to avoid,
+what trade-offs to expect.
+
+### The lifecycle is everything
+
+Session 2's crashes were all caused by **constructing the
+`XRSceneView` outside Kit's XR-tool lifecycle**:
+
+- During extension `on_startup` → crashes ~6 s into launch
+  (`bindMemory` / "Failed to initialize graphics environment" /
+  exit `0xC0000005`).
+- From an `xr_profile.vr.enable` event subscription → crashes ~90 ms
+  later (same call stack).
+
+Both are races: the XR USD layers, the swapchain, the renderer's XR
+codepath — none of it is fully wired up at either point. The
+construction call walks into half-initialised state and segfaults.
+
+**The working lifecycle is `XRToolComponentBase`.** Subclass it; the
+base class registers you with Kit's tool framework. Your `on_enable`
+fires only **after** the action map resolves and the XR USD layers
+are fully ready. Construct `XRSceneView` there, or lazily on first
+button press (which is what `XRMenuTool` — the stock B-button menu —
+does). No crash.
+
+This is the same mechanism every shipped Kit XR tool uses
+(`XRMenuTool`, `XRTeleportTool`, `XRNavigationTool`, etc.). If you're
+building anything beyond a passive observer, you want to be a tool.
+
+Reference shipped code: `xr_menu_tool.py` in the
+`omni.kit.xr.ui.stage` extension. It's 200 lines and clean.
+
+### Action map authoring is the other half
+
+To make `XRToolComponentBase("messelpit_menu")` fire its `on_enable`,
+Kit needs to see `messelpit_menu` in the active action map's `tools`
+list. The active action map is selected from a pool of available ones
+based on (1) which input device tags match the connected controllers,
+(2) priority — higher wins.
+
+Ship your own action map under
+`source/extensions/<your-ext>/xrmanifests/action_maps/` and register
+it in `extension.toml`:
+
+```toml
+[settings]
+xr.manifests."<your-ext-id>" = "xrmanifests"
+```
+
+Plus add `xrmanifests/` to your `premake5.lua`'s `prebuild_link` so
+it reaches the staged build:
+
+```lua
+repo_build.prebuild_link {
+    { "<extension-source-dir>", ext.target_dir.."/<extension-source-dir>" },
+    { "xrmanifests", ext.target_dir.."/xrmanifests" },
+}
+```
+
+Author **two** maps — a dual-handed Touch variant and a single-right
+Touch variant. Kit picks single-right whenever one controller goes
+idle (which happens often on Quest 3 — the Touch Plus controllers
+sleep aggressively), and a manifest covering only the dual case
+won't fire your tool when Kit decides one controller is idle.
+Priority 100 in both is enough to beat the stock 30 (dual) and 10
+(single-right).
+
+Button-binding trade-off: in the dual map, **left-Y** is free
+(stock binds nothing to it) so use it. In the single-right map,
+**every** right-hand control is bound by stock — there are no free
+buttons. Steal `xr_menu`'s right-B and accept that the stock
+settings menu is unavailable in single-controller mode.
+
+See `docs/in-vr-ui-research-2026-05-30.md` for the full plumbing
+walkthrough and `xrmanifests/action_maps/messelpit_vr*.json` for
+the working examples.
+
+### Geometry is constrained by the controllers USD layer
+
+The XR USD layer to attach the panel to is `controllers` — already
+pre-declared in `defaults.xr.profile.vr.gui.layers` (`["controllers",
+"tooltips"]`). Don't create a custom layer name; a half-initialised
+layer throws "internal error" every frame (the
+`usd_viewer/vr-panel-handoff-2026-05-29.md` write-up identified this
+correctly).
+
+Piggybacking on the `controllers` layer comes with one inherited
+quirk: **the selection-beam coordinate frame is tied to the panel
+size**. Going beyond the stock `XRMenuTool` dimensions —
+**`PANEL_DISTANCE_M = 1`, `PANEL_WIDTH_M = 4.5`, `PANEL_HEIGHT_M = 3.0`
+at `PANEL_SPATIAL_SCALE = 0.25`** — detaches the selection beam from
+the right controller. Larger distance or taller panels render fine,
+but the beam visually appears to come from the left controller (or
+floats unattached). Clicking still works but you can't aim properly.
+
+This is empirical; we don't know the underlying cause. Possibly the
+beam's ray origin in the layer's transform frame is normalised
+against the layer's bbox, and our oversized panel shifts that bbox.
+Don't have time to chase it down — sticking with stock dimensions
+is the workaround.
+
+**Consequence**: you can't just "make the panel bigger" to fit more
+content. If you need more content, shrink fonts/button heights and
+wrap in `ui.ScrollingFrame` (same pattern `XRMenuTool`'s
+`XRSettingsWindow.build_ui` uses).
+
+### Widget content gotchas (omni.ui inside XRSceneView)
+
+omni.ui in a `WidgetComponent` rendered through `XRSceneView`
+mostly behaves like the desktop, with one observed footgun:
+
+- **A `Label` whose text overflows its container width without
+  `word_wrap=True` can collapse the layout of everything below it.**
+  Symptom: title renders, nothing else does. Fix: either shrink the
+  font_size until the text fits on one line, or set
+  `word_wrap=True` so it wraps cleanly. (`Button` labels don't have
+  this issue.)
+
+`ui.ScrollingFrame` works inside `XRSceneView`. Use it for any
+content taller than the panel's logical height. The right thumbstick
+scrolls when hovering inside the frame.
+
+`ui.Button.style` works. `ui.Button.set_style()` exists but we
+haven't relied on it. Mouse-hover highlight works (the
+`UpdatePolicy.ON_MOUSE_HOVERED` constructor arg to `WidgetComponent`
+makes the widget re-render when the selection beam hovers an
+interactive element).
+
+### Screenshots as a debugging tool
+
+The user can't see the desktop while wearing the headset — and you
+can't really see the panel without the headset. The sibling
+`usd_viewer` project's screenshot service solves this: F9 captures
+the whole desktop on demand; auto-capture writes one every 5 s
+while XR is active. The Kit XR mirror window shows both eyes'
+stereoscopic views side-by-side, so a desktop screenshot captures
+exactly what the user sees in headset.
+
+Ported verbatim as `senckenberg/messelpit/screenshot_service.py`.
+Output to `~/messelpit_viewer/screenshots/<prefix>_<ts>.bmp`. BMPs
+are large (~55 MB at 6400×2160) but write in milliseconds — single
+bulk `BitBlt` to memory, single bulk file write, no per-pixel
+Python work. PowerShell + `System.Drawing` converts BMP to PNG for
+cropping/zooming.
+
+Without this we would not have figured out the layout-collapse
+bug. Recommended for any future VR Kit project.
+
+### Refresh of "what's not done" — Session 3
+
+| Item | Status as of 2026-05-30 evening |
+|---|---|
+| In-VR floating panel | **Done.** `messelpit_menu_tool.py`. Mirrors desktop panel content. |
+| Selection beam coordinate frame | **Known limitation:** dimensions locked to stock XRMenuTool values; root cause not investigated. |
+| Locomotion comfort options | Not done. |
+| Hide desktop panel when XR engages | Not done. |
+| Terrain-following locomotion | Not done; biggest open item. |
+| Fly speed for 6×9 km terrain | Not done. |
+| Steep-wall teleport override | Not done. |
+| Cleanup: delete the now-stubbed `ui_vr.py` | Not done; intentionally kept until we're sure the tool-based path is the right pattern long-term. |

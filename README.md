@@ -175,15 +175,19 @@ customize their `setup.py` despite the "stock" label.
 - **Desktop controls panel**:
   `kit-app-template/source/extensions/senckenberg.messelpit/senckenberg/messelpit/ui_desktop.py`
   — docked next to the Stage hierarchy.
-- **In-VR floating panel** (currently disabled):
-  `kit-app-template/source/extensions/senckenberg.messelpit/senckenberg/messelpit/ui_vr.py`
-  — subscribes to `xr_profile.vr.enable`, *but* the actual panel build
-  is stubbed out: constructing an `XRSceneView` at session start
-  crashes Kit in renderer init. The scaffolding (event subscription,
-  widget class, controls binding) remains in place for the next attempt
-  once we understand why. See
-  [`docs/openxr-lessons-learned.md`](docs/openxr-lessons-learned.md)
-  "Session 2" for the analysis.
+- **In-VR floating panel**:
+  `kit-app-template/source/extensions/senckenberg.messelpit/senckenberg/messelpit/messelpit_menu_tool.py`
+  — an `XRToolComponentBase` subclass (same lifecycle as Kit's
+  built-in B-button settings menu). Press **left-Y** (dual
+  controllers) or **right-B** (single-right) to summon a floating
+  3D panel 1 m in front of your face. Panel content mirrors the
+  desktop side panel (title, Home, viewpoint buttons with
+  descriptions, About) inside a `ScrollingFrame`. Buttons bind to
+  the same `MesselControls.go_to_viewpoint` as the desktop panel,
+  so a new viewpoint added to `viewpoints.py` lights up in both
+  places automatically. See
+  [`docs/in-vr-ui-research-2026-05-30.md`](docs/in-vr-ui-research-2026-05-30.md)
+  for the path that worked (it took several wrong turns first).
 - **Viewpoint teleport**:
   `kit-app-template/source/extensions/senckenberg.messelpit/senckenberg/messelpit/controls.py`
   — `_apply_viewpoint` checks for an active XR profile and calls
@@ -261,12 +265,14 @@ What works in-headset:
   headset view jumps. (As of commit `f56d64a`, the desktop buttons
   also work before Start XR — previously they silently no-op'd until
   the headset was engaged.)
+- **In-VR floating panel.** Press **left-Y** (dual controllers) or
+  **right-B** (single-right) to summon a floating 3D panel. Aim the
+  right-hand selection beam at a button and pull the trigger to
+  click it. Press the menu button again to dismiss. Walk/teleport
+  more than 3 m away and it auto-hides.
 
 What doesn't work yet:
 
-- **In-VR floating control panel** — scaffolded but disabled; the
-  `XRSceneView` path crashes Kit at session start. Use the desktop
-  panel as the interim controller; see "What's where" above.
 - **Terrain following** — fly mode moves in a straight line, ignoring
   the terrain mesh. You can walk through the side of the pit. Needs
   a character controller; on the roadmap.

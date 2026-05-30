@@ -35,7 +35,7 @@ locally before flipping to the streaming variant.
 | 6. 2D WebRTC streaming to a browser | done | `viewer_streaming.kit` + `web-viewer-sample`; see `docs/quest2-stream-test-result.md` |
 | 7. CloudXR.js / WebXR streaming to Quest browser | not started | Kit SDK 109.0.2+ has it built-in; alternative path to #4 |
 | 8. Info hotspots over fossil-find locations | future | needs Senckenberg coordinate data |
-| 9. In-VR floating panel (Home + viewpoints) | **dead-end on XRSceneView path; stubbed out** | crashes Kit on session start (renderer-init access violation); see `docs/openxr-lessons-learned.md` "Session 2"; next attempt should follow sibling `usd_viewer`'s handoff-doc recipe |
+| 9. In-VR floating panel (Home + viewpoints + descriptions + About) | **working** | `messelpit_menu_tool.py` — `XRToolComponentBase` subclass bound to left-Y / right-B via a custom action map; panel mirrors the desktop `MesselDesktopUI` content via a `ScrollingFrame`; verified Quest 3 + Touch Plus 2026-05-30. See `docs/in-vr-ui-research-2026-05-30.md` for the path that worked. |
 | 10. VR-comfort UI (locomotion tuning, vignette, etc.) | future | speed/vertMovement tuneable via `xr.navigation.speed`; defaults currently stock (3 m/s — too slow for 6×9 km terrain) |
 | 11. Terrain-following locomotion | future | stock Kit XR fly mode walks straight through the terrain mesh; needs character-controller or per-frame downcast |
 
@@ -75,25 +75,28 @@ teleport branches inside `controls.py`: if XR is active,
 `XRCore.schedule_set_camera` moves the headset pose; otherwise the persp
 camera is moved via `ViewportCameraState`.
 
-The XR kit instantiates **both** UIs but only the desktop panel is
-visible right now. `ui_vr.py` has scaffolding for an `XRSceneView` +
-`UiContainer` floating 3D panel, but **the `_build_panel()` call is
-stubbed out** — constructing the XRSceneView at session start crashes
-Kit in renderer init (`bindMemory` / "Failed to initialize graphics
-environment", exit `0xC0000005`). See `docs/openxr-lessons-learned.md`
-section "Session 2" for the full crash analysis. The sibling
-`usd_viewer` repo (`D:\senckenberg\usd_viewer`) explored the same path,
-identified four scene-view requirements that need to all be true for
-the panel to render, and documented them in
-`vr-panel-handoff-2026-05-29.md` — those should be the starting point
-for the next attempt.
+The XR kit instantiates **three** things on startup: the desktop
+side panel (`MesselDesktopUI`), an XR session-event subscriber
+(`MesselVrUI`, currently just a stub that logs enable/disable), and
+**the in-VR menu tool** (`MesselpitMenuTool` in
+`messelpit_menu_tool.py`). The tool is an `XRToolComponentBase`
+subclass — same lifecycle Kit's own `XRMenuTool` uses for its
+B-button settings menu. Press **left-Y** (dual-controller mode) or
+**right-B** (single-right) to summon a floating 3D panel 1 m in
+front of your face; press again to dismiss. Press a viewpoint
+button on the panel and the headset teleports there.
 
-In the headset right now: stereoscopic terrain renders fine, selection
-beam works (right A toggles selection / teleport mode; left X toggles
+In the headset: stereoscopic terrain renders fine, selection beam
+works (right A toggles selection / teleport mode; left X toggles
 left-hand selection), teleport works on flat-enough surfaces (right
-thumbstick forward + release), and viewpoint navigation works from the
-desktop panel. The desktop panel's `MesselControls` correctly branches
-between persp-camera moves and XR `schedule_set_camera`, gated on
+thumbstick forward + release), and the in-VR panel is reachable
+via the right-controller selection beam. Viewpoint navigation works
+from both the desktop panel and the in-VR panel — the in-VR panel
+binds to the same `MesselControls.go_to_viewpoint` that the desktop
+panel uses, so adding a viewpoint to `viewpoints.py` lights it up
+in both clients automatically. The desktop panel's `MesselControls`
+correctly branches between persp-camera moves and XR
+`schedule_set_camera`, gated on
 `xr_core.get_input_device("displayDevice") is not None` rather than
 `profile.is_enabled()` (the latter returns true at extension startup
 and silently no-ops the desktop buttons before Start XR).
@@ -138,21 +141,46 @@ fooled if `git status` reports a "clean" working tree after you've edited
 extension** — pure new code:
 
 - `extension.py` — IExt lifecycle (`on_startup`, `on_shutdown`); chooses
-  which UIs to build based on which extensions are loaded
+  which UIs to build based on which extensions are loaded; also wires
+  the screenshot service onto XR enable/disable
 - `controls.py` — domain logic; `_apply_viewpoint` branches XR vs persp camera
 - `ui_desktop.py` — docked tabbed side panel (Viewpoints + Info)
-- `ui_vr.py` — scaffolding for a floating in-VR panel; subscribes to
-  `xr_profile.vr.enable` but the actual `_build_panel()` call is stubbed
-  (XRSceneView construction crashes Kit; see openxr-lessons-learned.md
-  "Session 2"). Returning to this is on the roadmap.
+- `ui_vr.py` — XR session-event subscriber. Originally meant to build
+  the floating panel itself, but that path crashed Kit. The actual
+  in-VR panel lives in `messelpit_menu_tool.py` (next entry); this
+  module is now just a log-only stub kept for symmetry with the
+  desktop UI lifecycle. Will likely be deleted in a future cleanup.
+- `messelpit_menu_tool.py` — **the in-VR floating panel.**
+  `MesselpitMenuTool(XRToolComponentBase)` is registered into Kit's
+  XR tool framework via our custom action map (see `xrmanifests/`).
+  On button press, builds an `XRSceneView + UiContainer +
+  WidgetComponent` floating 3D widget anchored to the `controllers`
+  USD layer. Same lifecycle as the stock `XRMenuTool` (right-B
+  settings menu) — that's the reference implementation we mirror.
+- `screenshot_service.py` — F9 hotkey + 5 s auto-screenshot via
+  Windows GDI to BMP. Output to `~/messelpit_viewer/screenshots/`.
+  Auto-screenshot only runs while XR is active; F9 always on. Used
+  for debugging in-headset rendering (you can't see the desktop
+  while wearing the headset).
 - `viewpoints.py` — preset camera coordinates in local meters
 
 `config/extension.toml` declares the XR-related deps
 (`omni.kit.xr.core`, `omni.kit.scene_view.xr`,
 `omni.kit.scene_view.xr_utils`) as **optional** so the extension still
-loads in the desktop and streaming kits. `ui_vr.py` also imports those
-modules lazily — if neither path resolves, the VR UI logs a warning and
-no-ops; the desktop UI is unaffected.
+loads in the desktop and streaming kits. `messelpit_menu_tool.py`
+imports them lazily inside `_make_tool_class()` so a missing module is
+a warning, not a crash.
+
+`xrmanifests/action_maps/` ships **two** custom action maps — one for
+dual-handed Touch (Quest 2/3) and one for single-right Touch. Both
+add `messelpit_menu` to the toollist. The dual map binds it to
+left-Y (keeping the stock right-B menu intact); the single-right
+map binds it to right-B (sacrificing the stock menu, since with one
+controller all face buttons are already taken). Priority 100 in
+both, beats stock 30 / 10. Wired up via
+`xr.manifests."senckenberg.messelpit" = "xrmanifests"` in
+`extension.toml` and the `repo_build.prebuild_link` line in
+`premake5.lua`.
 
 `kit-app-template/source/apps/senckenberg.messelpit.*.kit` — both `.kit`
 files have manual edits beyond the template scaffolding (excluded extensions,
@@ -275,12 +303,33 @@ clicked_fn body, just delegate.
 ui.Button("Hide ortho", clicked_fn=self._controls.toggle_orthophoto)
 ```
 
-### Adding the same button in VR (when the floating panel is fixed)
+### Adding the same button in VR
 
-Future state — `ui_vr.py` should construct the same logical buttons via
-`omni.ui.Button` in its `WidgetClass`. The button binds the *same*
-`MesselControls` method. One feature, two views. Until the XRSceneView
-crash is resolved, VR-side buttons are aspirational; see roadmap.
+Edit `messelpit_menu_tool.py` — inside `_build_widget_class`, the
+`MesselPanelWidget.__init__` builds the panel content. Add an
+`omni.ui.Button` to the VStack (inside the ScrollingFrame), wired to
+the same `MesselControls` method. One feature, two views.
+
+```python
+ui.Button(
+    "Hide ortho",
+    height=36,
+    style={
+        "Button": {"background_color": 0xFF3D3D3D, ...},
+        "Button.Label": {"font_size": 20},
+    },
+    clicked_fn=controls.toggle_orthophoto,
+)
+```
+
+**Constraint to respect:** panel physical extent must stay within
+the stock `XRMenuTool` geometry — `PANEL_DISTANCE_M = 1`,
+`PANEL_WIDTH_M = 4.5`, `PANEL_HEIGHT_M = 3.0`. Going bigger or
+further away **breaks the selection-beam coordinate frame** on the
+controllers USD layer (the beam detaches from the right hand). To
+fit more content, shrink fonts/heights or rely on the
+`ScrollingFrame` that wraps the panel content. See
+`docs/in-vr-ui-research-2026-05-30.md` for details.
 
 ### Adding a persistent setting
 
@@ -353,10 +402,13 @@ Tear down in `on_shutdown` with `menu_utils.remove_menu_items`.
 - **Don't put `omni.ui` imports at module level in `controls.py`.**
   Keep the controller importable from headless contexts (tests, CLI
   inspection, future MCP server).
-- **Don't tie new features to the in-VR panel until it renders.** The
-  desktop panel reaches the headset's PC monitor when the user lifts
-  the visor, so it's a viable interim UI. The user can also drive
-  viewpoint navigation from desktop while in-headset.
+- **Don't change the panel's physical geometry beyond stock
+  XRMenuTool values** (`PANEL_DISTANCE_M = 1`, `PANEL_WIDTH_M = 4.5`,
+  `PANEL_HEIGHT_M = 3.0` at `PANEL_SPATIAL_SCALE = 0.25`). Larger
+  distance / height detaches the selection beam from the right
+  controller (verified empirically). To show more content, shrink
+  fonts/button heights inside the existing physical panel — the
+  `ScrollingFrame` wrapper handles overflow.
 
 ### Reference shape that exists today
 
